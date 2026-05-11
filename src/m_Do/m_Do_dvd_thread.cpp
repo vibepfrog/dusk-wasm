@@ -136,10 +136,26 @@ mDoDvdThd_command_c* mDoDvdThd_param_c::getFirstCommand() {
 }
 
 void mDoDvdThd_param_c::addition(mDoDvdThd_command_c* pCommand) {
+#ifdef __EMSCRIPTEN__
+    // Single-threaded wasm: the DVD worker is not actually running (see the
+    // emscripten skip in src/dusk/OSThread.cpp's OSResumeThread). The thread
+    // body — mDoDvdThd_param_c::mainLoop — is purely a dispatcher: it waits
+    // for a kick message, drains the command list, and calls execute() on
+    // each. Running execute() synchronously here is functionally equivalent
+    // for callers, which poll cmd->mIsDone on subsequent main01 iterations.
+    // The DVD reads themselves are synchronous against the in-memory CISO
+    // (via Aurora's nod library), so blocking the main thread for the
+    // duration of one read is acceptable.
+    s32 result = pCommand->execute();
+    if (result != 1) {
+        OSReport_Error("mDoDvdThd_param_c::addition() inline command execution failed\n");
+    }
+#else
     OSLockMutex(&mMutext);
     cLs_Addition(&mNodeList, pCommand);
     OSUnlockMutex(&mMutext);
     this->kick();
+#endif
 }
 
 void mDoDvdThd_param_c::cut(mDoDvdThd_command_c* param_0) {
