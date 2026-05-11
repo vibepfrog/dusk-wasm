@@ -32,7 +32,9 @@ typedef struct standard_create_request_class {
 
 int fpcSCtRq_phase_Load(standard_create_request_class* i_request) {
     int ret = fpcLd_Load(i_request->process_name);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("[DIAG] fpcSCtRq_phase_Load: procName={} ret={}", i_request->process_name, ret);
+#endif
 
     switch (ret) {
     case cPhs_INIT_e:
@@ -47,7 +49,9 @@ int fpcSCtRq_phase_Load(standard_create_request_class* i_request) {
 }
 
 int fpcSCtRq_phase_CreateProcess(standard_create_request_class* i_request) {
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("fpcSCtRq_phase_CreateProcess: procName={}", i_request->process_name);
+#endif
     fpcLy_SetCurrentLayer(i_request->base.layer);
     i_request->base.process =
         fpcBs_Create(i_request->process_name, i_request->base.id, i_request->process_append);
@@ -58,7 +62,9 @@ int fpcSCtRq_phase_CreateProcess(standard_create_request_class* i_request) {
         fpcLd_Free(i_request->process_name);
         return cPhs_ERROR_e;
     } else {
+#if DUSK_TRACE_ENABLE
         DuskLog.debug("fpcSCtRq_phase_CreateProcess: fpcBs_Create OK proc={}", (void*)i_request->base.process);
+#endif
         i_request->base.process->create_req = &i_request->base;
         return cPhs_NEXT_e;
     }
@@ -67,11 +73,13 @@ int fpcSCtRq_phase_CreateProcess(standard_create_request_class* i_request) {
 int fpcSCtRq_phase_SubCreateProcess(standard_create_request_class* i_request) {
     fpcLy_SetCurrentLayer(i_request->base.layer);
     int ret = fpcBs_SubCreate(i_request->base.process);
+#if DUSK_TRACE_ENABLE
     static int sSubCreateLogCount = 0;
     if (sSubCreateLogCount < 20) {
         DuskLog.debug("fpcSCtRq_phase_SubCreateProcess: pid={} procName={:04x} ret={}", i_request->base.id, i_request->process_name, ret);
         sSubCreateLogCount++;
     }
+#endif
 
 #if DEBUG
     if (ret == 0 && i_request->unk_0x60-- <= 0) {

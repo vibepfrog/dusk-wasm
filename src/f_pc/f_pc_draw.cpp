@@ -35,15 +35,25 @@ int fpcDw_Execute(base_process_class* i_proc) {
 }
 
 int fpcDw_Handler(fpcDw_HandlerFuncFunc i_iterHandler, fpcDw_HandlerFunc i_func) {
+#if DUSK_TRACE_ENABLE
     static int sDwLogCount = 0;
+#endif
     int ret;
+#if DUSK_TRACE_ENABLE
     if (sDwLogCount < 5) { DuskLog.debug("fpcDw_Handler: before BeforeOfDraw"); }
+#endif
     cAPIGph_BeforeOfDraw();
+#if DUSK_TRACE_ENABLE
     if (sDwLogCount < 5) { DuskLog.debug("fpcDw_Handler: before draw iteration"); }
+#endif
     ret = i_iterHandler(i_func);
+#if DUSK_TRACE_ENABLE
     if (sDwLogCount < 5) { DuskLog.debug("fpcDw_Handler: before AfterOfDraw"); }
+#endif
     cAPIGph_AfterOfDraw();
+#if DUSK_TRACE_ENABLE
     if (sDwLogCount < 5) { DuskLog.debug("fpcDw_Handler: done"); }
     sDwLogCount++;
+#endif
     return ret;
 }

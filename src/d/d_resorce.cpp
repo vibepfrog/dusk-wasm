@@ -335,10 +335,12 @@ int dRes_info_c::loadResource() {
 #endif
                 void* res = mArchive->getIdxResource(fileIndex);
 #if TARGET_PC
+#if DUSK_TRACE_ENABLE
                 u32 size = mArchive->findIdxResource(fileIndex)->data_size;
                 std::string fileName = mArchive->mStringTable +
                         (mArchive->findIdxResource(fileIndex)->type_flags_and_name_offset & 0xFFFFFF);
                 DuskLog.debug("Loading Resource: {} (Size: {})", fileName, size);
+#endif
 #endif
 
                 if (res == NULL) {

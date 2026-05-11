@@ -133,35 +133,57 @@ AuroraInfo initialize(int argc, char* argv[], const AuroraConfig& config) noexce
   ASSERT(window::create_renderer(), "Failed to initialize SDL renderer: {}", SDL_GetError());
 #endif
 
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: about to show_window");
+#endif
   window::show_window();
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: window shown");
+#endif
 
 #ifdef AURORA_ENABLE_GX
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: about to gfx::initialize");
+#endif
   gfx::initialize();
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: gfx::initialize done");
+#endif
 
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: about to imgui::create_context");
+#endif
   imgui::create_context();
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: imgui::create_context done");
+#endif
 #endif
   const auto size = window::get_window_size();
   Log.info("Using framebuffer size {}x{} scale {}", size.fb_width, size.fb_height, size.scale);
 #ifdef AURORA_ENABLE_GX
   if (g_config.imGuiInitCallback != nullptr) {
+#if DUSK_TRACE_ENABLE
     Log.info(">>> aurora::initialize: about to imGuiInitCallback");
+#endif
     g_config.imGuiInitCallback(&size);
   }
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: about to imgui::initialize");
+#endif
   imgui::initialize();
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: imgui::initialize done");
+#endif
 #endif
 
 #ifdef AURORA_ENABLE_RMLUI
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: about to rmlui::initialize");
+#endif
   rmlui::initialize(size);
+#if DUSK_TRACE_ENABLE
   Log.info(">>> aurora::initialize: rmlui::initialize done");
+#endif
 #endif
 
   g_initialFrame = true;

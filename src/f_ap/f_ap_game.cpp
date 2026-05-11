@@ -814,11 +814,13 @@ static void duskExecute() {
 
 void fapGm_Execute() {
     ZoneScoped;
+#if DUSK_TRACE_ENABLE
     static u32 sExecCount = 0;
     if (sExecCount < 10 || (sExecCount % 300 == 0)) {
         DuskLog.debug("fapGm_Execute frame={}", sExecCount);
     }
     sExecCount++;
+#endif
 
     #if DEBUG
     JUTDbPrint::getManager()->setCharColor(g_HIO.mColor);

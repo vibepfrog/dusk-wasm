@@ -19,12 +19,16 @@ static cPhs_Step fopScnRq_phase_ClearOverlap(scene_request_class* i_sceneReq) {
 }
 
 static cPhs_Step fopScnRq_phase_Execute(scene_request_class* i_sceneReq) {
+#if DUSK_TRACE_ENABLE
     static int sExecLogCount = 0;
+#endif
     cPhs_Step ret = (cPhs_Step)fpcNdRq_Execute(&i_sceneReq->create_request);
+#if DUSK_TRACE_ENABLE
     if (sExecLogCount < 30) {
         DuskLog.debug("fopScnRq_phase_Execute: ret={} name={}", ret, i_sceneReq->create_request.name);
         sExecLogCount++;
     }
+#endif
     return ret;
 }
 

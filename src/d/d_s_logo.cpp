@@ -227,13 +227,15 @@ void dScnLogo_c::checkProgSelect() {
 }
 
 int dScnLogo_c::draw() {
+#if DUSK_TRACE_ENABLE
     static int sDrawLogCount = 0;
     if (sDrawLogCount < 10) {
         DuskLog.debug("dScnLogo_c::draw: mExecCommand={} mTimer={}", mExecCommand, mTimer);
     }
+    sDrawLogCount++;
+#endif
     cLib_calcTimer<u16>(&mTimer);
     (this->*l_execFunc[mExecCommand])();
-    sDrawLogCount++;
     return 1;
 }
 
@@ -1059,55 +1061,77 @@ static int resLoad(request_of_phase_process_class* i_phase, dScnLogo_c* i_this) 
 }
 
 int dScnLogo_c::create() {
+#if DUSK_TRACE_ENABLE
     static bool sDiagLogged = false;
     if (!sDiagLogged) {
         DuskLog.debug("dScnLogo_c::create START");
     }
+#endif
     int phase_state = resLoad(&field_0x1c4, this);
+#if DUSK_TRACE_ENABLE
     if (!sDiagLogged) {
         DuskLog.debug("dScnLogo_c::create resLoad={} (need {} for complete)", phase_state, fmt::underlying(cPhs_COMPLEATE_e));
         sDiagLogged = true;
     }
+#endif
     if (phase_state != cPhs_COMPLEATE_e) {
         return phase_state;
     }
 
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create resLoad COMPLETE, continuing init...");
+#endif
 
     #if PLATFORM_WII
     data_8053a730 = 1;
     #endif
 
     mpHeap = mDoExt_setCurrentHeap(mLogo01Heap);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create: heap set, calling logoInitGC");
+#endif
 
     #if PLATFORM_WII || PLATFORM_SHIELD
     logoInitWii();
     #else
     logoInitGC();
     #endif
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create: logoInitGC returned");
+#endif
 
     JKRSetCurrentHeap(mpHeap);
 
     OS_REPORT("\x1b[31m%d gameHeap->getFreeSize %08x(%d)\n\x1b[m", 1732, mDoExt_getGameHeap()->getFreeSize(), mDoExt_getGameHeap()->getFreeSize());
 
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create: calling dvdDataLoad");
+#endif
     dvdDataLoad();
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create: dvdDataLoad returned");
+#endif
 
     OS_REPORT("\x1b[31m%d gameHeap->getFreeSize %08x(%d)\n\x1b[m", 1738, mDoExt_getGameHeap()->getFreeSize(), mDoExt_getGameHeap()->getFreeSize());
 
     #if !(PLATFORM_WII || PLATFORM_SHIELD)
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create: calling loadStaticWaves");
+#endif
     Z2AudioMgr::getInterface()->loadStaticWaves();
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create: loadStaticWaves returned");
+#endif
     #endif
 
     mDoGph_gInf_c::setTickRate(OS_TIMER_CLOCK / 60);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create: calling waitBlanking");
+#endif
     mDoGph_gInf_c::waitBlanking(0);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dScnLogo_c::create: waitBlanking returned");
+#endif
 
     field_0x20a = 0;
 
@@ -1499,7 +1523,9 @@ void dScnLogo_c::dvdDataLoad() {
 
     OS_REPORT("\x1b[32m%d archiveHeap->getTotalFreeSize %08x\n\x1b[m", 2436, archiveHeap->getTotalFreeSize());
 
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("dvdDataLoad: post-Alink/Always, starting aramMount sequence");
+#endif
     mpField0Command = aramMount("/res/FieldMap/Field0.arc", mDoExt_getJ2dHeap());
     mpAlAnmCommand = aramMount("/res/Object/AlAnm.arc", NULL);
     mpFmapResCommand = aramMount(FMAP_RES_PATH, mDoExt_getJ2dHeap());
@@ -1634,7 +1660,9 @@ void dScnLogo_c::dvdDataLoad() {
 }
 
 static int dScnLogo_Create(scene_class* i_this) {
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("[DIAG] dScnLogo_Create: entry i_this={}", (void*)i_this);
+#endif
     return (JKR_NEW_ARGS (i_this) dScnLogo_c)->create();
 }
 

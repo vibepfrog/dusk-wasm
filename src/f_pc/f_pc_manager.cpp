@@ -47,7 +47,7 @@ BOOL fpcM_IsCreating(fpc_ProcID i_id) {
 
 void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_postExecuteFn) {
     ZoneScoped;
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
     static int s_fpcm_iter = 0;
     bool trace = (s_fpcm_iter++ < 2);
     if (trace) OSReport(">>> fpcM_Management iter=%d step=1 MtxInit\n", s_fpcm_iter - 1);
@@ -57,14 +57,14 @@ void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_p
         dComIfGd_peekZdata();
     }
     fapGm_HIO_c::executeCaptureScreen();
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
     if (trace) OSReport(">>> fpcM_Management step=2 dShutdownErrorMsg::execute\n");
 #endif
 
     bool shutdownRet = dShutdownErrorMsg_c::execute();
     if (!shutdownRet) {
         static bool l_dvdError = false;
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         if (trace) OSReport(">>> fpcM_Management step=3 dDvdErrorMsg::execute\n");
 #endif
 
@@ -81,13 +81,13 @@ void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_p
             if (!dusk::frame_interp::is_enabled())
 #endif
             {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
                 if (trace) OSReport(">>> fpcM_Management step=4 cAPIGph_Painter\n");
 #endif
                 cAPIGph_Painter();
             }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=5 fpcDt_Handler\n");
 #endif
             if (!dPa_control_c::isStatus(1)) {
@@ -96,53 +96,53 @@ void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_p
                 dPa_control_c::offStatus(1);
             }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=6 fpcPi_Handler\n");
 #endif
             if (!fpcPi_Handler()) {
                 JUT_ASSERT(353, FALSE);
             }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=7 fpcCt_Handler\n");
 #endif
             if (!fpcCt_Handler()) {
                 JUT_ASSERT(357, FALSE);
             }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=8 i_preExecuteFn\n");
 #endif
             if (i_preExecuteFn != NULL) {
                 i_preExecuteFn();
             }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=9 fpcEx_Handler\n");
 #endif
             if (!fapGm_HIO_c::isCaptureScreen()) {
                 fpcEx_Handler(fpcM_Execute);
             }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=10 fpcDw_Handler\n");
 #endif
             if (!fapGm_HIO_c::isCaptureScreen() || fapGm_HIO_c::getCaptureScreenDivH() != 1) {
                 fpcDw_Handler(fpcM_DrawIterater, fpcM_Draw);
             }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=11 i_postExecuteFn\n");
 #endif
             if (i_postExecuteFn != NULL) {
                 i_postExecuteFn();
             }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=12 dComIfGp_drawSimpleModel\n");
 #endif
             dComIfGp_drawSimpleModel();
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (trace) OSReport(">>> fpcM_Management step=13 done\n");
 #endif
         } else if (!l_dvdError) {

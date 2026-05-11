@@ -31,9 +31,13 @@ fpc_ProcID fopScnM_DeleteReq(scene_class* i_scene) {
 }
 
 int fopScnM_CreateReq(s16 i_procName, s16 param_2, u16 param_3, uintptr_t i_data) {
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("fopScnM_CreateReq: procName={} fade={}", i_procName, param_2);
+#endif
     fpc_ProcID result = fopScnRq_Request(0, 0, i_procName, (void*)i_data, param_2, param_3);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("fopScnM_CreateReq: result={} (error={})", result, fmt::underlying(fpcM_ERROR_PROCESS_ID_e));
+#endif
     return result != fpcM_ERROR_PROCESS_ID_e;
 }
 

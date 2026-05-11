@@ -260,9 +260,11 @@ int OSCreateThread(OSThread* thread, void* (*func)(void*), void* param,
     // Add to active queue
     sActiveThreadCount++;
 
+#if DUSK_TRACE_ENABLE
     OSReport("[PC-OSThread] Created thread %p (priority=%d, stackSize=%u, func=%p)\n",
              thread, priority, stackSize, (void*)func);
     OSReport("[PC-OSThread] >>> OSCreateThread returning for %p\n", thread);
+#endif
     return 1;
 }
 
@@ -328,7 +330,9 @@ s32 OSSuspendThread(OSThread* thread) {
 // ============================================================================
 
 s32 OSResumeThread(OSThread* thread) {
+#if DUSK_TRACE_ENABLE
     OSReport("[PC-OSThread] >>> OSResumeThread enter %p\n", thread);
+#endif
     if (!thread)
         return 0;
 
@@ -337,16 +341,22 @@ s32 OSResumeThread(OSThread* thread) {
         thread->suspend--;
     }
 
+#if DUSK_TRACE_ENABLE
     OSReport("[PC-OSThread] >>> OSResumeThread suspend=%d for %p\n", (int)thread->suspend, thread);
+#endif
     // Only wake up if suspend count drops to 0
     if (thread->suspend == 0) {
         PCThreadData* data = GetThreadData(thread);
+#if DUSK_TRACE_ENABLE
         OSReport("[PC-OSThread] >>> OSResumeThread data=%p for %p\n", data, thread);
+#endif
 
         if (data) {
             // Lock the specific thread mutex to safely modify state and notify
             std::unique_lock<std::mutex> threadLock(data->mtx);
+#if DUSK_TRACE_ENABLE
             OSReport("[PC-OSThread] >>> OSResumeThread locked, started=%d for %p\n", data->started, thread);
+#endif
 
             if (!data->started) {
                 // First resume: launch the native thread
@@ -363,10 +373,14 @@ s32 OSResumeThread(OSThread* thread) {
                 // Skip the spawn and log so the next debug pass can find which
                 // call sites actually need cooperative scheduling later (DVD,
                 // MemCard, audio decode are the obvious suspects).
+#if DUSK_TRACE_ENABLE
                 OSReport("[PC-OSThread] Skipping native thread spawn for %p (emscripten, no -pthread)\n", thread);
+#endif
 #else
                 data->nativeThread = std::thread(ThreadEntryWrapper, thread, data);
+#if DUSK_TRACE_ENABLE
                 OSReport("[PC-OSThread] Started thread %p\n", thread);
+#endif
 #endif
             } else {
                 // Resume from suspension: signal the condition variable

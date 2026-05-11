@@ -49,12 +49,16 @@ int fpcNdRq_phase_IsCreated(node_create_request* i_request) {
 }
 
 int fpcNdRq_phase_Create(node_create_request* i_request) {
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("fpcNdRq_phase_Create: name={} layer={}", i_request->name, (void*)i_request->layer);
+#endif
     i_request->creating_id =
         fpcSCtRq_Request(i_request->layer, i_request->name,
                          (stdCreateFunc)i_request->create_req_methods->post_method, i_request,
                          i_request->data);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("fpcNdRq_phase_Create: creating_id={} (error={})", i_request->creating_id, fmt::underlying(fpcM_ERROR_PROCESS_ID_e));
+#endif
     if (i_request->creating_id == fpcM_ERROR_PROCESS_ID_e) {
         return cPhs_UNK3_e;
     }
@@ -144,11 +148,13 @@ int fpcNdRq_Cancel(node_create_request* i_request) {
 int fpcNdRq_Handler() {
     node_class* node = l_fpcNdRq_Queue.mpHead;
 
+#if DUSK_TRACE_ENABLE
     static int sNdRqLogCount = 0;
     if (l_fpcNdRq_Queue.mSize > 0 && sNdRqLogCount < 30) {
         DuskLog.debug("fpcNdRq_Handler: queue size={}", l_fpcNdRq_Queue.mSize);
         sNdRqLogCount++;
     }
+#endif
 
 #if DEBUG
     if (g_fpcDbSv_service[9] != NULL) {

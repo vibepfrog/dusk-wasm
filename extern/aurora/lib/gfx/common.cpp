@@ -467,16 +467,26 @@ PipelineRef pipeline_ref(const gx::PipelineConfig& config) {
 
 void initialize() {
   static aurora::Module GfxLog("aurora::gfx");
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: depth_peek");
+#endif
   g_frameIndex = 0;
   depth_peek::initialize();
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: tex_copy_conv");
+#endif
   tex_copy_conv::initialize();
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: tex_palette_conv");
+#endif
   tex_palette_conv::initialize();
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: texture_replacement");
+#endif
   texture_replacement::initialize();
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: GetLimits");
+#endif
 
   // For uniform & storage buffer offset alignments
   g_device.GetLimits(&g_cachedLimits);
@@ -486,14 +496,18 @@ void initialize() {
       return;
     }
     static aurora::Module CbLog("aurora::gfx::createBuffer");
+#if DUSK_TRACE_ENABLE
     CbLog.info(">>> createBuffer: '{}' size={} usage=0x{:x}", label, size, static_cast<uint32_t>(usage));
+#endif
     const wgpu::BufferDescriptor descriptor{
         .label = label,
         .usage = usage,
         .size = size,
     };
     out = g_device.CreateBuffer(&descriptor);
+#if DUSK_TRACE_ENABLE
     CbLog.info(">>> createBuffer: '{}' created", label);
+#endif
   };
   createBuffer(g_uniformBuffer, wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst, UniformBufferSize,
                "Shared Uniform Buffer");
@@ -510,12 +524,18 @@ void initialize() {
   }
   currentStagingBuffer = 0;
   s_mappingState.store(BufferMapState::Unmapped, std::memory_order_release);
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: about to map_staging_buffer");
+#endif
   map_staging_buffer();
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: map_staging_buffer returned");
+#endif
 
   {
+#if DUSK_TRACE_ENABLE
     GfxLog.info(">>> gfx::initialize: creating static BGL");
+#endif
     constexpr std::array layoutEntries{
         // Vertex data buffer
         wgpu::BindGroupLayoutEntry{
@@ -542,7 +562,9 @@ void initialize() {
         .entries = layoutEntries.data(),
     };
     g_staticBindGroupLayout = g_device.CreateBindGroupLayout(&layoutDesc);
+#if DUSK_TRACE_ENABLE
     GfxLog.info(">>> gfx::initialize: created static BGL, creating static BG");
+#endif
     const std::array entries{
         wgpu::BindGroupEntry{
             .binding = 0,
@@ -560,11 +582,15 @@ void initialize() {
         .entries = entries.data(),
     };
     g_staticBindGroup = g_device.CreateBindGroup(&bindGroupDescriptor);
+#if DUSK_TRACE_ENABLE
     GfxLog.info(">>> gfx::initialize: static BG done");
+#endif
   }
 
   {
+#if DUSK_TRACE_ENABLE
     GfxLog.info(">>> gfx::initialize: creating uniform BGL");
+#endif
     constexpr std::array layoutEntries{
         // Uniform buffer (dynamic offset)
         wgpu::BindGroupLayoutEntry{
@@ -597,14 +623,22 @@ void initialize() {
         .entries = entries.data(),
     };
     g_uniformBindGroup = g_device.CreateBindGroup(&bindGroupDescriptor);
+#if DUSK_TRACE_ENABLE
     GfxLog.info(">>> gfx::initialize: uniform BG done");
+#endif
   }
 
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: about to gx::initialize");
+#endif
   gx::initialize();
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: gx::initialize done; about to initialize_pipeline_cache");
+#endif
   initialize_pipeline_cache();
+#if DUSK_TRACE_ENABLE
   GfxLog.info(">>> gfx::initialize: initialize_pipeline_cache done; gfx::initialize complete");
+#endif
 }
 
 void shutdown() {
@@ -645,7 +679,9 @@ void map_staging_buffer() {
     return;
   }
 
+#if DUSK_TRACE_ENABLE
   Log.info(">>> map_staging_buffer: calling MapAsync (mode=Write size={})", StagingBufferSize);
+#endif
   // wgpu::CallbackMode::AllowSpontaneous is a native-Dawn extension. emdawnwebgpu
   // bridges to the standard browser WebGPU API which only accepts WaitAnyOnly or
   // AllowProcessEvents for MapAsync per spec (webgpu.h §3.2.4 callback modes).
@@ -653,7 +689,9 @@ void map_staging_buffer() {
   g_stagingBuffers[currentStagingBuffer].MapAsync(
       wgpu::MapMode::Write, 0, StagingBufferSize, wgpu::CallbackMode::AllowProcessEvents,
       [](wgpu::MapAsyncStatus status, wgpu::StringView message) {
+#if DUSK_TRACE_ENABLE
         Log.info(">>> map_staging_buffer callback: status={}", magic_enum::enum_name(status));
+#endif
         if (status == wgpu::MapAsyncStatus::CallbackCancelled || status == wgpu::MapAsyncStatus::Aborted) {
           static bool s_loggedInstanceLoss = false;
           // The "external Instance reference no longer exists" message from
@@ -678,7 +716,9 @@ void map_staging_buffer() {
                message);
         s_mappingState.store(BufferMapState::Mapped, std::memory_order_release);
       });
+#if DUSK_TRACE_ENABLE
   Log.info(">>> map_staging_buffer: MapAsync returned");
+#endif
 }
 
 bool begin_frame() {

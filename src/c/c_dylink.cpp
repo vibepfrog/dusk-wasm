@@ -954,7 +954,9 @@ int cDyl_LinkASync(s16 i_ProfName) {
                 return cPhs_ERROR_e;
             }
         } else {
+#if DUSK_TRACE_ENABLE
             DuskLog.debug("cDyl_LinkASync: load_async not ready for profName={}", i_ProfName);
+#endif
             return cPhs_INIT_e;
         }
     }
@@ -964,7 +966,9 @@ int cDyl_LinkASync(s16 i_ProfName) {
 }
 
 static int cDyl_InitCallback(void* param_0) {
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("[DIAG] cDyl_InitCallback: START");
+#endif
     JUT_ASSERT(335, !cDyl_Initialized);
 
 #ifdef TARGET_PC
@@ -976,13 +980,19 @@ static int cDyl_InitCallback(void* param_0) {
     #else
     JKRHeap* parentHeap = DynamicModuleControlBase::getHeap();
     #endif
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("cDyl_InitCallback: parentHeap={}", (void*)parentHeap);
+#endif
 
     JKRFileCache* loader = JKRMountDvdDrive("/", parentHeap, NULL);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("cDyl_InitCallback: JKRMountDvdDrive loader={}", (void*)loader);
+#endif
 
     DynamicModuleControl::initialize();
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("cDyl_InitCallback: DynamicModuleControl::initialize done");
+#endif
 
     #if PLATFORM_GCN
     void* strTbl = JKRGetResource("/dvd/str/Final/Release/frameworkF.str");
@@ -991,21 +1001,29 @@ static int cDyl_InitCallback(void* param_0) {
     #else
     void* strTbl = JKRGetResource("/dvd/str/Final/Release/frameworkF.str");
     #endif
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("cDyl_InitCallback: frameworkF.str={}", strTbl);
+#endif
 
     JKRDetachResource(strTbl, loader);
     JKRUnmountDvdDrive(loader);
     OSSetStringTable(strTbl);
 
     DynamicModuleControl dmc("f_pc_profile_lst");
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("cDyl_InitCallback: linking f_pc_profile_lst...");
+#endif
     dmc.link();
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("cDyl_InitCallback: link done");
+#endif
 #endif
     cDyl_Initialized = true;
 
     fopScnM_CreateReq(fpcNm_LOGO_SCENE_e, 0x7FFF, 0, 0);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("cDyl_InitCallback: fpcNm_LOGO_SCENE_e created, DONE");
+#endif
     return 1;
 }
 

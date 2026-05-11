@@ -134,6 +134,19 @@ if (EMSCRIPTEN)
   add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexceptions>)
 endif ()
 
+# Verbose-bring-up trace gate. The WASM port has temporary per-frame /
+# per-step / per-actor diagnostic prints scattered through dusk and aurora;
+# they're invaluable while iterating on a stuck boot path but flood the
+# console (and slow rendering) once the port reaches gameplay. Wrapped in
+# `#if DUSK_TRACE_ENABLE` blocks — flip this option ON to re-enable them
+# all without touching individual files. Default OFF.
+option(DUSK_TRACE_ENABLE "Enable verbose bring-up trace logging" OFF)
+if (DUSK_TRACE_ENABLE)
+    add_compile_definitions(DUSK_TRACE_ENABLE=1)
+else ()
+    add_compile_definitions(DUSK_TRACE_ENABLE=0)
+endif ()
+
 set(AURORA_ENABLE_DVD ON CACHE BOOL "Enable DVD API support" FORCE)
 set(AURORA_ENABLE_CARD ON CACHE BOOL "Enable CARD API support" FORCE)
 if (NOT EMSCRIPTEN)

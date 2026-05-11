@@ -136,8 +136,10 @@ base_process_class* fpcBs_Create(s16 i_profname, fpc_ProcID i_procID, void* i_ap
     u32 size;
 
     pprofile = (process_profile_definition*)fpcPf_Get(i_profname);
+#if DUSK_TRACE_ENABLE
     DuskLog.debug("fpcBs_Create: pid={} profname={} ({}) profile={} procSize={} unkSize={}",
            i_procID, getProcName(i_profname), i_profname, (void*)pprofile, pprofile->process_size, pprofile->unk_size);
+#endif
     size = pprofile->process_size + pprofile->unk_size;
 
     pprocess = (base_process_class*)cMl::memalignB(-4, size);

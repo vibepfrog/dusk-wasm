@@ -97,11 +97,13 @@ int fpcCtRq_Do(void* arg, void* /*unused*/) {
         }
     }
 
+#if DUSK_TRACE_ENABLE
     static int sCtRqDoLogCount = 0;
     if (sCtRqDoLogCount < 30) {
         DuskLog.debug("fpcCtRq_Do: phase={} process={}", phase, (void*)i_request->process);
         sCtRqDoLogCount++;
     }
+#endif
 
     switch (phase) {
     case cPhs_COMPLEATE_e: {

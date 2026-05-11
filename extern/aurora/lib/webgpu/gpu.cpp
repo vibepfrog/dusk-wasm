@@ -649,8 +649,10 @@ bool initialize(AuroraBackend auroraBackend) {
   Log.info("Using surface format {}, present mode {}", magic_enum::enum_name(surfaceFormat),
            magic_enum::enum_name(presentMode));
   const auto size = window::get_window_size();
+#if DUSK_TRACE_ENABLE
   Log.info(">>> create_surface: window size fb={}x{} native={}x{}", size.fb_width, size.fb_height,
            size.native_fb_width, size.native_fb_height);
+#endif
   g_graphicsConfig = GraphicsConfig{
       .surfaceConfiguration =
           wgpu::SurfaceConfiguration{
@@ -664,14 +666,20 @@ bool initialize(AuroraBackend auroraBackend) {
       .msaaSamples = g_config.msaa,
       .textureAnisotropy = g_config.maxTextureAnisotropy,
   };
+#if DUSK_TRACE_ENABLE
   Log.info(">>> create_surface: about to create_copy_pipeline (msaa={})", g_config.msaa);
+#endif
   create_copy_pipeline();
+#if DUSK_TRACE_ENABLE
   Log.info(">>> create_surface: about to resize_swapchain");
+#endif
   {
     window::SurfaceLock surfaceLock;
     resize_swapchain(size.fb_width, size.fb_height, size.native_fb_width, size.native_fb_height, true);
   }
+#if DUSK_TRACE_ENABLE
   Log.info(">>> create_surface: done");
+#endif
   return true;
 }
 
@@ -744,18 +752,30 @@ void resize_swapchain(uint32_t width, uint32_t height, uint32_t native_width, ui
   g_graphicsConfig.surfaceConfiguration.height = native_height;
   auto surfaceConfiguration = g_graphicsConfig.surfaceConfiguration;
   surfaceConfiguration.device = g_device;
+#if DUSK_TRACE_ENABLE
   Log.info(">>> resize_swapchain: surface.Configure({}x{})",
            surfaceConfiguration.width, surfaceConfiguration.height);
+#endif
   g_surface.Configure(&surfaceConfiguration);
+#if DUSK_TRACE_ENABLE
   Log.info(">>> resize_swapchain: create_render_texture #1 (multisampled)");
+#endif
   g_frameBuffer = create_render_texture(width, height, true);
+#if DUSK_TRACE_ENABLE
   Log.info(">>> resize_swapchain: create_render_texture #2 (resolve)");
+#endif
   g_frameBufferResolved = create_render_texture(width, height, false);
+#if DUSK_TRACE_ENABLE
   Log.info(">>> resize_swapchain: create_depth_texture");
+#endif
   g_depthBuffer = create_depth_texture(width, height);
+#if DUSK_TRACE_ENABLE
   Log.info(">>> resize_swapchain: create_copy_bind_group");
+#endif
   g_CopyBindGroup = create_copy_bind_group(present_source());
+#if DUSK_TRACE_ENABLE
   Log.info(">>> resize_swapchain: done");
+#endif
 }
 } // namespace aurora::webgpu
 

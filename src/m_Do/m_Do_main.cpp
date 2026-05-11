@@ -256,12 +256,14 @@ void main01(void) {
     dusk::game_clock::ensure_initialized();
 
     do {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         static int em_loop_iter = 0;
         if (em_loop_iter < 5 || (em_loop_iter % 60) == 0) {
             OSReport(">>> main01 loop iter=%d enter\n", em_loop_iter);
         }
         em_loop_iter++;
+#endif
+#ifdef __EMSCRIPTEN__
         // Without an explicit yield, the wasm main loop monopolizes the JS event
         // loop and the browser never gets a chance to flush rendering, dispatch
         // input, or pump async I/O. Asyncify rewrites emscripten_sleep into a
@@ -270,11 +272,13 @@ void main01(void) {
         // restructuring this loop into emscripten_set_main_loop. Placed at the
         // top so the `continue` after a failed aurora_begin_frame still yields.
         emscripten_sleep(0);
+#endif
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         if (em_loop_iter < 5) OSReport(">>> main01 loop iter=%d after sleep\n", em_loop_iter - 1);
 #endif
         // 1. Update Window Events
         const AuroraEvent* event = aurora_update();
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         if (em_loop_iter < 5) OSReport(">>> main01 loop iter=%d after aurora_update\n", em_loop_iter - 1);
 #endif
         while (true) {
@@ -304,17 +308,17 @@ void main01(void) {
 
         eventsDone:;
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         if (em_loop_iter < 5) OSReport(">>> main01 iter=%d events processed, calling aurora_begin_frame\n", em_loop_iter - 1);
 #endif
         if (!aurora_begin_frame()) {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (em_loop_iter < 5) OSReport(">>> main01 iter=%d aurora_begin_frame returned FALSE\n", em_loop_iter - 1);
 #endif
             DuskLog.debug("aurora_begin_frame returned false, skipping draw this frame");
             continue;
         }
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         if (em_loop_iter < 5) OSReport(">>> main01 iter=%d aurora_begin_frame returned TRUE\n", em_loop_iter - 1);
 #endif
 
