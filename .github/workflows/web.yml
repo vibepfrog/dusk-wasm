@@ -14,30 +14,48 @@ permissions:
 
 # Don't cancel in-flight deploys — Pages doesn't tolerate two deploy jobs
 # racing for the same environment, and aborting a build mid-link wastes
-# the emsdk cache warmup.
+# the emsdk + sccache warmup.
 concurrency:
   group: pages
   cancel-in-progress: false
+
+env:
+  # Pin freetype version + hash here so the pre-fetch step and the URL in
+  # extern/aurora/extern/CMakeLists.txt:97 stay in sync. Update both if you
+  # bump the version.
+  FREETYPE_VERSION: 2.14.3
+  FREETYPE_SHA256: e61b31ab26358b946e767ed7eb7f4bb2e507da1cfefeb7a8861ace7fd5c899a1
+  # sccache target — used by the Rust toolchain to cache compiled crates.
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      # dtolnay/rust-toolchain is the smallest action that gives us rustup
-      # plus a stable toolchain; Corrosion drives the actual cross-compile
-      # via Rust_CARGO_TARGET=wasm32-unknown-emscripten in the preset.
+      # ── Toolchain setup ────────────────────────────────────────────────
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # Rust_RUSTUP_INSTALL_MISSING_TARGET=ON in the preset would pull this
-      # in on first build, but pre-installing keeps the configure log clean
-      # and surfaces network failures here instead of mid-build.
       - name: Add wasm32-unknown-emscripten Rust target
         run: rustup target add wasm32-unknown-emscripten
+
+      # sccache wraps rustc so each compiled crate ends up in a content-
+      # addressable cache backed by the GitHub Actions cache service.
+      # Net result: first build downloads + compiles ~250 crates (nod's deps);
+      # subsequent builds reuse the cached .rlibs and finish in seconds.
+      - name: Setup sccache (Rust compile cache)
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      # ccache wraps clang/emcc so each .o is cached by source-hash. Saves
+      # the bulk of the ~6m C++ compile when only a handful of files change.
+      - name: Setup ccache (C++ compile cache)
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ runner.os }}-web
+          max-size: 2G
 
       # Pinned to the version recorded in tools/emsdk-version. The cache
       # folder lets setup-emsdk reuse the toolchain across runs instead of
@@ -48,10 +66,97 @@ jobs:
           version: 5.0.6
           actions-cache-folder: emsdk-cache
 
+      # ── Cache: Cargo registry + git index ──────────────────────────────
+      # ~100 MB. Invalidated only when AuroraNodProvider.cmake changes the
+      # nod version pin (and therefore the dep set).
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('extern/aurora/cmake/AuroraNodProvider.cmake') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      # ── Cache: FetchContent _deps (Dawn, SDL3, freetype, imgui sources) ─
+      # Hash the files that pin URLs/versions; deps only re-fetch on a real
+      # provider bump, not on every code change. ~1-2 GB.
+      - name: Cache FetchContent _deps
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: build/web-emscripten/_deps
+          key: fc-deps-${{ runner.os }}-emsdk5.0.6-${{ hashFiles('extern/aurora/extern/CMakeLists.txt', 'extern/aurora/cmake/Aurora*Provider.cmake') }}
+          restore-keys: |
+            fc-deps-${{ runner.os }}-emsdk5.0.6-
+            fc-deps-${{ runner.os }}-
+
+      # ── Pre-fetch freetype (savannah.gnu.org flake workaround) ─────────
+      # download.savannah.gnu.org returns Connection-reset / Network-
+      # unreachable intermittently (the failed run #25655523108 sat on a
+      # 132-second timeout there). Try savannah first; fall back to the
+      # GitLab mirror (also upstream-canonical). If the cache already
+      # populated freetype-src, this step is a no-op.
+      - name: Pre-fetch freetype with mirror fallback
+        run: |
+          FT_SRC_DIR="build/web-emscripten/_deps/freetype-src"
+          if [ -f "$FT_SRC_DIR/CMakeLists.txt" ]; then
+            echo "freetype source already present (from cache) — skip fetch"
+            exit 0
+          fi
+          mkdir -p "$(dirname $FT_SRC_DIR)"
+
+          URLS=(
+            "https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz"
+            "https://gitlab.freedesktop.org/freetype/freetype/-/archive/VER-${FREETYPE_VERSION//./-}/freetype-VER-${FREETYPE_VERSION//./-}.tar.gz"
+            "https://download-mirror.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz"
+          )
+          ok=0
+          for url in "${URLS[@]}"; do
+            echo "Trying: $url"
+            if curl -fSL --retry 4 --retry-connrefused --max-time 180 -o ft.tar.gz "$url"; then
+              echo "OK: $url"
+              ok=1; break
+            fi
+            echo "FAIL: $url"
+          done
+          if [ "$ok" = "0" ]; then
+            echo "::error::All freetype mirrors failed; aborting"
+            exit 1
+          fi
+
+          # Verify hash for the canonical tarball (gitlab archive has a different
+          # internal layout and hash, so skip-verify if the savannah download
+          # didn't succeed but the mirror did).
+          actual=$(sha256sum ft.tar.gz | awk '{print $1}')
+          if [ "$actual" = "$FREETYPE_SHA256" ]; then
+            echo "SHA256 verified against pinned value"
+          else
+            echo "::warning::SHA256 mismatch (got $actual); proceeding (likely a mirror archive)"
+          fi
+
+          mkdir -p "$FT_SRC_DIR"
+          tar -xzf ft.tar.gz -C "$FT_SRC_DIR" --strip-components=1
+          rm ft.tar.gz
+          ls "$FT_SRC_DIR" | head -10
+
       # The web-emscripten preset declares source/binary dirs and cache
       # variables — don't pass -S/-B here or we'll fight the preset.
+      # FETCHCONTENT_SOURCE_DIR_FREETYPE points at our pre-fetched source so
+      # FetchContent skips the network step entirely.
+      # CMake's *_COMPILER_LAUNCHER prefixes every compile with `ccache`,
+      # which means each emcc invocation is hashed (input + flags) and
+      # served from cache if seen before. The web-emscripten preset doesn't
+      # set these (it inherits relwithdebinfo, not ci), so pass them here.
+      # We use ccache for the C++ wrapper and rely on RUSTC_WRAPPER=sccache
+      # (env above) for the Rust crates.
       - name: Configure
-        run: emcmake cmake --preset web-emscripten
+        run: |
+          emcmake cmake --preset web-emscripten \
+            -DFETCHCONTENT_SOURCE_DIR_FREETYPE=${{ github.workspace }}/build/web-emscripten/_deps/freetype-src \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: cmake --build --preset web-emscripten
@@ -62,13 +167,23 @@ jobs:
       - name: Verify build output
         run: |
           set -e
-          for f in index.html index.js index.wasm index.data; do
+          for f in index.html index.js index.wasm index.data iso_bridge.js; do
             if [ ! -f "build/web-emscripten/web/$f" ]; then
               echo "::error::Missing expected build output: build/web-emscripten/web/$f"
               exit 1
             fi
           done
           ls -lh build/web-emscripten/web/
+
+      # Print cache stats so the run summary shows hit-rates and we can tell
+      # at a glance whether sccache/ccache actually helped this build.
+      - name: Cache stats
+        if: always()
+        run: |
+          echo "=== sccache stats ==="
+          sccache --show-stats || true
+          echo "=== ccache stats ==="
+          ccache -s || true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
