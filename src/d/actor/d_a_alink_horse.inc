@@ -10,8 +10,9 @@
 #include "d/actor/d_a_obj_iceleaf.h"
 #include "d/actor/d_a_spinner.h"
 
-static void* daAlink_searchBoar(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchBoar(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_E_WB_e) {
         if (((e_wb_class*)i_actor)->getModel() != NULL) {
@@ -22,8 +23,9 @@ static void* daAlink_searchBoar(fopAc_ac_c* i_actor, void* i_data) {
     return NULL;
 }
 
-static fopAc_ac_c* daAlink_searchCoach(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchCoach(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_NPC_COACH_e) {
         return i_actor;
@@ -156,7 +158,7 @@ void daAlink_c::commonInitForceRideRein() {
 }
 
 int daAlink_c::initForceRideBoar() {
-    e_wb_class* boar = (e_wb_class*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchBoar, NULL);
+    e_wb_class* boar = (e_wb_class*)fopAcIt_Judge(daAlink_searchBoar, NULL);
     fopAc_ac_c* boar_actor = (fopAc_ac_c*)boar;
 
     if (boar == NULL) {
@@ -1705,7 +1707,7 @@ int daAlink_c::procHorseWait() {
         }
 
         if (checkBoarSingleBattleFirst()) {
-            fopAc_ac_c* boar = (fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchBoar, NULL);
+            fopAc_ac_c* boar = (fopAc_ac_c*)fopAcIt_Judge(daAlink_searchBoar, NULL);
             if (boar != NULL) {
                 int temp_r28 = abs((s16)(cLib_targetAngleY(&boar->current.pos, &current.pos) - boar->shape_angle.y));
                 f32 dist_xz2 = boar->current.pos.abs2XZ(current.pos);

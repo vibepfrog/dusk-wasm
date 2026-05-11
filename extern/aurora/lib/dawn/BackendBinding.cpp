@@ -1,0 +1,58 @@
+#include "BackendBinding.hpp"
+
+#include <memory>
+
+#if !defined(SDL_PLATFORM_MACOS) && !defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_TVOS)
+#include <SDL3/SDL_video.h>
+#endif
+
+namespace aurora::webgpu::utils {
+std::shared_ptr<wgpu::ChainedStruct> SetupWindowAndGetSurfaceDescriptorCocoa(SDL_Window* window);
+
+std::shared_ptr<wgpu::ChainedStruct> SetupWindowAndGetSurfaceDescriptor(SDL_Window* window) {
+#if defined(SDL_PLATFORM_MACOS) || defined(SDL_PLATFORM_IOS) || defined(SDL_PLATFORM_TVOS)
+  return SetupWindowAndGetSurfaceDescriptorCocoa(window);
+#else
+  const auto props = SDL_GetWindowProperties(window);
+#if defined(SDL_PLATFORM_ANDROID)
+  std::shared_ptr<wgpu::SurfaceSourceAndroidNativeWindow> desc =
+      std::make_shared<wgpu::SurfaceSourceAndroidNativeWindow>();
+  desc->window = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr);
+  return std::move(desc);
+#elif defined(SDL_PLATFORM_WIN32)
+  std::shared_ptr<wgpu::SurfaceSourceWindowsHWND> desc = std::make_shared<wgpu::SurfaceSourceWindowsHWND>();
+  desc->hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+  desc->hinstance = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, nullptr);
+  return std::move(desc);
+#elif defined(SDL_PLATFORM_EMSCRIPTEN)
+  // Browser WebGPU surfaces are addressed by CSS selector against the host page's
+  // <canvas>. The shell HTML wires #canvas to the Module's drawing surface (see
+  // dusk/web/shell.html), and SDL3's emscripten backend creates the same canvas
+  // automatically — so we don't need any pointer from SDL_GetWindowProperties.
+  // emdawnwebgpu names this struct EmscriptenSurfaceSourceCanvasHTMLSelector
+  // (the Emscripten prefix distinguishes it from the native Dawn variant).
+  (void)props;
+  std::shared_ptr<wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector> desc =
+      std::make_shared<wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector>();
+  desc->selector = "#canvas";
+  return std::move(desc);
+#elif defined(SDL_PLATFORM_LINUX)
+  const char* driver = SDL_GetCurrentVideoDriver();
+  if (SDL_strcmp(driver, "wayland") == 0) {
+    std::shared_ptr<wgpu::SurfaceSourceWaylandSurface> desc = std::make_shared<wgpu::SurfaceSourceWaylandSurface>();
+    desc->display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr);
+    desc->surface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr);
+    return std::move(desc);
+  }
+  if (SDL_strcmp(driver, "x11") == 0) {
+    std::shared_ptr<wgpu::SurfaceSourceXlibWindow> desc = std::make_shared<wgpu::SurfaceSourceXlibWindow>();
+    desc->display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
+    desc->window = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+    return std::move(desc);
+  }
+#endif
+  return nullptr;
+#endif
+}
+
+} // namespace aurora::webgpu::utils

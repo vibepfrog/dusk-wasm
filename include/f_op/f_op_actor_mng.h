@@ -693,11 +693,11 @@ void fopAcM_setEffectMtx(const fopAc_ac_c*, const J3DModelData*);
 
 const char* fopAcM_getProcNameString(const fopAc_ac_c* i_actor);
 
-static const fopAc_ac_c* fopAcM_findObjectCB(fopAc_ac_c const* i_actor, void* i_data);
+static void* fopAcM_findObjectCB(void* i_actor, void* i_data);
 
 fopAc_ac_c* fopAcM_searchFromName(char const* name, u32 param0, u32 param1);
 
-fopAc_ac_c* fopAcM_findObject4EventCB(fopAc_ac_c* i_actor, void* i_data);
+void* fopAcM_findObject4EventCB(void* i_actor, void* i_data);
 
 fopAc_ac_c* fopAcM_searchFromName4Event(char const* i_name, s16 i_eventID);
 

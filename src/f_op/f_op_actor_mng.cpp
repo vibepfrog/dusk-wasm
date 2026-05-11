@@ -153,7 +153,7 @@ s32 fopAcM_SearchByID(fpc_ProcID i_actorID, fopAc_ac_c** i_outActor) {
     if (fpcM_IsCreating(i_actorID)) {
         *i_outActor = NULL;
     } else {
-        *i_outActor = (fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)fpcSch_JudgeByID, &i_actorID);
+        *i_outActor = (fopAc_ac_c*)fopAcIt_Judge(fpcSch_JudgeByID, &i_actorID);
         if (*i_outActor == NULL) {
             return 0;
         }
@@ -162,7 +162,7 @@ s32 fopAcM_SearchByID(fpc_ProcID i_actorID, fopAc_ac_c** i_outActor) {
 }
 
 s32 fopAcM_SearchByName(s16 i_procName, fopAc_ac_c** i_outActor) {
-    *i_outActor = (fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)fpcSch_JudgeForPName, &i_procName);
+    *i_outActor = (fopAc_ac_c*)fopAcIt_Judge(fpcSch_JudgeForPName, &i_procName);
     if (*i_outActor == NULL) {
         return 0;
     } else {
@@ -2299,7 +2299,8 @@ const char* fopAcM_getProcNameString(const fopAc_ac_c* i_actor) {
     return name != NULL ? name : "UNKOWN";
 }
 
-static const fopAc_ac_c* fopAcM_findObjectCB(fopAc_ac_c const* i_actor, void* i_data) {
+static void* fopAcM_findObjectCB(void* i_actorVoid, void* i_data) {
+    const fopAc_ac_c* i_actor = static_cast<const fopAc_ac_c*>(i_actorVoid);
     if (!fopAcM_IsExecuting(fopAcM_GetID(i_actor))) {
         return NULL;
     }
@@ -2308,7 +2309,7 @@ static const fopAc_ac_c* fopAcM_findObjectCB(fopAc_ac_c const* i_actor, void* i_
 
     if (prm->procname == fopAcM_GetProfName(i_actor) && prm->argument == i_actor->argument) {
         if (prm->prm0 == 0 || prm->prm1 == (prm->prm0 & fopAcM_GetParam(i_actor))) {
-            return i_actor;
+            return const_cast<fopAc_ac_c*>(i_actor);
         }
     }
 
@@ -2327,10 +2328,11 @@ fopAc_ac_c* fopAcM_searchFromName(char const* name, u32 param0, u32 param1) {
 
     prm.procname = objInf->procname;
     prm.argument = objInf->argument;
-    return fopAcM_Search((fopAcIt_JudgeFunc)fopAcM_findObjectCB, &prm);
+    return fopAcM_Search(fopAcM_findObjectCB, &prm);
 }
 
-fopAc_ac_c* fopAcM_findObject4EventCB(fopAc_ac_c* i_actor, void* i_data) {
+void* fopAcM_findObject4EventCB(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     if (i_data == NULL || !fopAcM_IsExecuting(fopAcM_GetID(i_actor))) {
         return NULL;
     }
@@ -2373,7 +2375,7 @@ fopAc_ac_c* fopAcM_searchFromName4Event(char const* i_name, s16 i_eventID) {
 
     prm.procname = objInf->procname;
     prm.argument = objInf->argument;
-    return fopAcM_Search((fopAcIt_JudgeFunc)fopAcM_findObject4EventCB, &prm);
+    return fopAcM_Search(fopAcM_findObject4EventCB, &prm);
 }
 
 dBgS_ObjRoofChk fopAcM_rc_c::mRoofCheck;

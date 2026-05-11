@@ -40,7 +40,8 @@ int daObjCdoor_c::CreateHeap() {
     return 1;
 }
 
-static void* daObjCdoor_searchChain(fopAc_ac_c* i_actor, void* i_this) {
+static void* daObjCdoor_searchChain(void* i_actorVoid, void* i_this) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     daObjCdoor_c* _this = static_cast<daObjCdoor_c*>(i_this);
     if (fopAcM_GetName(i_actor) == fpcNm_Obj_Wchain_e) {
         daObjWchain_c* chain = static_cast<daObjWchain_c*>(i_actor);
@@ -88,7 +89,7 @@ cPhs_Step daObjCdoor_c::create() {
                 mEnd = 1;
                 current.pos.y += l_moveOffsetY[mType];
             } else {
-                fopAcIt_Judge((fopAcIt_JudgeFunc)daObjCdoor_searchChain, this);
+                fopAcIt_Judge(daObjCdoor_searchChain, this);
             }
         }
         attention_info.position.set(
@@ -138,7 +139,7 @@ int daObjCdoor_c::Execute(Mtx** i_mtxP) {
 void daObjCdoor_c::execCdoor() {
     if (!mEnd) {
         if (mChainID == -1) {
-            fopAcIt_Judge((fopAcIt_JudgeFunc)daObjCdoor_searchChain, this);
+            fopAcIt_Judge(daObjCdoor_searchChain, this);
         }
         if (mChainID != -1) {
             daObjWchain_c* chain = static_cast<daObjWchain_c*>(fopAcM_SearchByID(mChainID));

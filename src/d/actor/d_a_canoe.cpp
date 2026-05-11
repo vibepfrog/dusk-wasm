@@ -20,7 +20,8 @@
 static BOOL l_debugMode; 
 #endif
 
-static BOOL daCanoe_searchTagWaterFall(fopAc_ac_c* i_actor, void* i_data) {
+static int daCanoe_searchTagWaterFall(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     if (fopAcM_GetName(i_actor) == fpcNm_Tag_WaterFall_e) {
         if (((daTagWaterFall_c*)i_actor)->checkHitWaterFall(*(cXyz*)i_data)) {
             daAlink_getAlinkActorClass()->onWaterFallFrontHit();
@@ -610,7 +611,7 @@ void daCanoe_c::setCanoeSliderEffect() {
         }
 
         cXyz sp28 = daAlink_getAlinkActorClass()->current.pos + (current.pos - old.pos);
-        fopAcIt_Executor((fopAcIt_ExecutorFunc)daCanoe_searchTagWaterFall, &sp28);
+        fopAcIt_Executor(daCanoe_searchTagWaterFall, &sp28);
     }
 }
 

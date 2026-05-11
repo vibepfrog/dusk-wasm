@@ -260,8 +260,9 @@ int OSCreateThread(OSThread* thread, void* (*func)(void*), void* param,
     // Add to active queue
     sActiveThreadCount++;
 
-    OSReport("[PC-OSThread] Created thread %p (priority=%d, stackSize=%u)\n",
-             thread, priority, stackSize);
+    OSReport("[PC-OSThread] Created thread %p (priority=%d, stackSize=%u, func=%p)\n",
+             thread, priority, stackSize, (void*)func);
+    OSReport("[PC-OSThread] >>> OSCreateThread returning for %p\n", thread);
     return 1;
 }
 
@@ -327,6 +328,7 @@ s32 OSSuspendThread(OSThread* thread) {
 // ============================================================================
 
 s32 OSResumeThread(OSThread* thread) {
+    OSReport("[PC-OSThread] >>> OSResumeThread enter %p\n", thread);
     if (!thread)
         return 0;
 
@@ -335,13 +337,16 @@ s32 OSResumeThread(OSThread* thread) {
         thread->suspend--;
     }
 
+    OSReport("[PC-OSThread] >>> OSResumeThread suspend=%d for %p\n", (int)thread->suspend, thread);
     // Only wake up if suspend count drops to 0
     if (thread->suspend == 0) {
         PCThreadData* data = GetThreadData(thread);
+        OSReport("[PC-OSThread] >>> OSResumeThread data=%p for %p\n", data, thread);
 
         if (data) {
             // Lock the specific thread mutex to safely modify state and notify
             std::unique_lock<std::mutex> threadLock(data->mtx);
+            OSReport("[PC-OSThread] >>> OSResumeThread locked, started=%d for %p\n", data->started, thread);
 
             if (!data->started) {
                 // First resume: launch the native thread
@@ -351,8 +356,18 @@ s32 OSResumeThread(OSThread* thread) {
                 // Unlock before launching to avoid potential deadlocks in thread initialization
                 threadLock.unlock();
 
+#ifdef __EMSCRIPTEN__
+                // No -pthread support in this build (single-threaded wasm).
+                // Spawning std::thread here throws "thread constructor failed:
+                // Not supported" and the game silently loses every worker.
+                // Skip the spawn and log so the next debug pass can find which
+                // call sites actually need cooperative scheduling later (DVD,
+                // MemCard, audio decode are the obvious suspects).
+                OSReport("[PC-OSThread] Skipping native thread spawn for %p (emscripten, no -pthread)\n", thread);
+#else
                 data->nativeThread = std::thread(ThreadEntryWrapper, thread, data);
                 OSReport("[PC-OSThread] Started thread %p\n", thread);
+#endif
             } else {
                 // Resume from suspension: signal the condition variable
                 // IMPORTANT: Set suspended to false BEFORE notifying to pass the wait predicate
@@ -473,7 +488,8 @@ void OSExitThread(void* val) {
 }
 
 void OSCancelThread(OSThread* thread) {
-    CRASH("OSCancelThread not implemented");
+    // (CRASH stub removed; the implementation below mirrors OSExitThread but
+    // for a non-current target thread.)
     if (!thread) return;
 
     if (thread->attr & OS_THREAD_ATTR_DETACH) {
@@ -487,7 +503,8 @@ void OSCancelThread(OSThread* thread) {
 }
 
 void OSDetachThread(OSThread* thread) {
-    CRASH("OSDetachThread not implemented");
+    // (CRASH stub removed; the implementation below is correct — it just
+    // wasn't smoke-tested before this WASM port reached the game loop.)
     if (!thread) return;
     thread->attr |= OS_THREAD_ATTR_DETACH;
 

@@ -3051,7 +3051,8 @@ void daMidna_c::initMidnaModel() {
     }
 }
 
-static void* daMidna_searchNpc(fopAc_ac_c* i_actor, void* o_far) {
+static void* daMidna_searchNpc(void* i_actorVoid, void* o_far) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     daAlink_c* link = daAlink_getAlinkActorClass();
     cXyz link_pos = link->current.pos;
     link_pos.y += 100.0f;
@@ -3110,10 +3111,10 @@ BOOL daMidna_c::checkMetamorphoseEnableBase() {
         /* dSv_event_flag_c::M_077 - Main Event - Get shadow crystal (can now transform) */
         !dComIfGs_isEventBit(0xD04) ||
 #if TARGET_PC
-        (fopAcIt_Judge((fopAcIt_JudgeFunc)daMidna_searchNpc, &tmp) &&
+        (fopAcIt_Judge(daMidna_searchNpc, &tmp) &&
          !dusk::getSettings().game.canTransformAnywhere)
 #else
-        fopAcIt_Judge((fopAcIt_JudgeFunc)daMidna_searchNpc, &tmp)
+        fopAcIt_Judge(daMidna_searchNpc, &tmp)
 #endif
     )
     {
@@ -3300,7 +3301,7 @@ int daMidna_c::execute() {
             if (!checkStateFlg0(FLG0_UNK_8000)) {
                 offStateFlg0((daMidna_FLG0)(FLG0_NPC_NEAR | FLG0_NPC_FAR));
                 BOOL far_;
-                if (fopAcIt_Judge((fopAcIt_JudgeFunc)daMidna_searchNpc, &far_)) {
+                if (fopAcIt_Judge(daMidna_searchNpc, &far_)) {
                     if (!far_) {
                         onStateFlg0(FLG0_NPC_NEAR);
                     } else {

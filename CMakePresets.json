@@ -500,6 +500,60 @@
         "x-windows-ci",
         "windows-arm64-msvc"
       ]
+    },
+    {
+      "name": "web-emscripten-fast",
+      "displayName": "Web (Emscripten, fast-iter)",
+      "description": "Inner-loop preset: Release build (no DWARF in wasm) keeps the link step fast — see docs/wasm-port-notes.md for the cost breakdown.",
+      "inherits": [
+        "web-emscripten"
+      ],
+      "binaryDir": "${sourceDir}/build/web-emscripten-fast",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "web-emscripten",
+      "displayName": "Web (Emscripten)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "inherits": [
+        "relwithdebinfo"
+      ],
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/Toolchain-emscripten.cmake",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install-web",
+        "CMAKE_AR": "${sourceDir}/tools/emar_pyshim.exe",
+        "Rust_CARGO_TARGET": "wasm32-unknown-emscripten",
+        "Rust_RUSTUP_INSTALL_MISSING_TARGET": {
+          "type": "BOOL",
+          "value": true
+        },
+        "AURORA_DAWN_PROVIDER": "emscripten",
+        "AURORA_SDL3_PROVIDER": "vendor",
+        "AURORA_NOD_PROVIDER": "vendor",
+        "AURORA_ENABLE_RMLUI": {
+          "type": "BOOL",
+          "value": true
+        },
+        "DUSK_ENABLE_DISCORD": {
+          "type": "BOOL",
+          "value": false
+        },
+        "DUSK_ENABLE_UPDATE_CHECKER": {
+          "type": "BOOL",
+          "value": false
+        },
+        "DUSK_ENABLE_SENTRY_NATIVE": {
+          "type": "BOOL",
+          "value": false
+        },
+        "DUSK_MOVIE_SUPPORT": {
+          "type": "BOOL",
+          "value": false
+        }
+      }
     }
   ],
   "buildPresets": [
@@ -687,6 +741,24 @@
       "displayName": "(Internal) Windows CI MSVC arm64",
       "targets": [
         "install"
+      ]
+    },
+    {
+      "name": "web-emscripten",
+      "configurePreset": "web-emscripten",
+      "description": "Build the static GitHub Pages bundle (index.{html,js,wasm,data}) under build/web-emscripten/web/",
+      "displayName": "Web (Emscripten)",
+      "targets": [
+        "dusk"
+      ]
+    },
+    {
+      "name": "web-emscripten-fast",
+      "configurePreset": "web-emscripten-fast",
+      "description": "Inner-loop emscripten build — no DWARF, smaller wasm, faster link.",
+      "displayName": "Web (Emscripten, fast-iter)",
+      "targets": [
+        "dusk"
       ]
     }
   ]

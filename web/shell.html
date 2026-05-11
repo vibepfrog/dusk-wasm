@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dusk - Twilight Princess (Web)</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20viewBox%3D'0%200%2032%2032'%3E%3Crect%20width%3D'32'%20height%3D'32'%20fill%3D'%230b0b0d'/%3E%3Ctext%20x%3D'16'%20y%3D'22'%20font-family%3D'sans-serif'%20font-size%3D'18'%20fill%3D'%236cb6ff'%20text-anchor%3D'middle'%3ED%3C/text%3E%3C/svg%3E">
+    <!-- iso_bridge.js attaches to window.duskIsoImport. It depends on the
+         emscripten-provided global `FS`, but only when importIso() runs;
+         loading it via `defer` here is fine because the file picker can't
+         fire until after the runtime is up and the user has clicked. -->
+    <script src="iso_bridge.js" defer></script>
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            background: #0b0b0d; color: #e6e6e6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        #canvas { display: block; position: absolute; inset: 0; margin: auto;
+            width: 100vw; height: 100vh; background: #000; outline: none; }
+        /* Boot-status line emscripten writes via Module.setStatus. */
+        #boot-status { position: fixed; left: 12px; bottom: 10px; font-size: 12px;
+            color: #888; pointer-events: none; font-variant-numeric: tabular-nums; }
+        /* Drop-zone overlay covers the canvas until /iso/dusk.ciso exists. */
+        #drop-zone { position: fixed; inset: 0; z-index: 10;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(11, 11, 13, 0.96); }
+        #drop-zone.hidden { display: none; }
+        #drop-zone.dragging .drop-card { border-color: #6cb6ff; background: #1a2230; }
+        .drop-card { box-sizing: border-box; width: min(560px, 92vw); padding: 32px 28px;
+            border: 2px dashed #3a3a42; border-radius: 12px; background: #16161a;
+            text-align: center; transition: border-color 0.12s, background 0.12s; }
+        .drop-card h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+        .drop-card .subtitle { margin: 0 0 22px; font-size: 13px; color: #9a9aa3; }
+        .drop-card .prompt { font-size: 15px; margin: 18px 0 14px; }
+        .pick-btn { display: inline-block; padding: 9px 18px; background: #2a2a32;
+            color: #e6e6e6; border: 1px solid #44444e; border-radius: 6px;
+            font: inherit; font-size: 14px; cursor: pointer; }
+        .pick-btn:hover { background: #34343c; }
+        #iso-file { display: none; }
+        .hash-line { margin-top: 22px; font-size: 11px; color: #888; line-height: 1.55; }
+        .hash-line code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 11px; color: #b8b8c2; user-select: all; word-break: break-all; }
+        #import-status { margin-top: 22px; min-height: 18px; font-size: 13px; color: #c8c8d0; }
+        #import-status.error { color: #ff6b6b; white-space: pre-wrap; text-align: left;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 12px; line-height: 1.5; }
+        #progress-bar { margin-top: 10px; height: 6px; background: #2a2a32;
+            border-radius: 3px; overflow: hidden; display: none; }
+        #progress-bar.active { display: block; }
+        #progress-fill { height: 100%; width: 0%; background: #6cb6ff;
+            transition: width 0.08s linear; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+    <div id="drop-zone">
+        <div class="drop-card">
+            <h1>Dusk</h1>
+            <div class="subtitle">A web port of The Legend of Zelda: Twilight Princess (GameCube)</div>
+
+            <div class="prompt">Drop your verified EUR Twilight Princess ISO here</div>
+            <label class="pick-btn" for="iso-file">Choose file</label>
+            <input id="iso-file" type="file" accept=".iso,.gcm">
+
+            <div class="hash-line">
+                Expected SHA-1:<br>
+                <code id="expected-sha1">(loading)</code><br>
+                The file stays on your device. Conversion takes ~30-90 seconds.
+            </div>
+
+            <div id="import-status"></div>
+            <div id="progress-bar"><div id="progress-fill"></div></div>
+        </div>
+    </div>
+
+    <div id="boot-status"></div>
+
+    <script>
+    (function () {
+        var dropZone     = document.getElementById('drop-zone');
+        var dropCard     = dropZone.querySelector('.drop-card');
+        var fileInput    = document.getElementById('iso-file');
+        var statusEl     = document.getElementById('import-status');
+        var progressBar  = document.getElementById('progress-bar');
+        var progressFill = document.getElementById('progress-fill');
+        var bootStatusEl = document.getElementById('boot-status');
+        var sha1El       = document.getElementById('expected-sha1');
+
+        // iso_bridge.js loads with `defer`, so it runs after the parser hits
+        // </body>; this inline block also runs after parsing. Read the SHA-1
+        // from the bridge here rather than hard-coding so the two stay in sync.
+        if (window.duskIsoImport && window.duskIsoImport.EXPECTED_SHA1) {
+            sha1El.textContent = window.duskIsoImport.EXPECTED_SHA1;
+        }
+
+        var importing = false;
+
+        function setStatus(text, isError) {
+            statusEl.textContent = text || '';
+            statusEl.classList.toggle('error', !!isError);
+        }
+        function setProgress(cur, total) {
+            if (total > 0) {
+                progressBar.classList.add('active');
+                progressFill.style.width = (cur / total * 100) + '%';
+            } else {
+                progressBar.classList.remove('active');
+                progressFill.style.width = '0%';
+            }
+        }
+        function phaseLabel(name) {
+            switch (name) {
+                case 'header-check':  return 'Checking disc header...';
+                case 'sha1':          return 'Verifying SHA-1 (this reads the whole ISO)...';
+                case 'ciso-convert':  return 'Converting to CISO...';
+                case 'write':         return 'Saving to browser storage...';
+                case 'done':          return 'Done.';
+                default:              return name;
+            }
+        }
+
+        function startImport(file) {
+            if (importing) return;
+            importing = true;
+            setStatus('Starting...', false);
+            setProgress(0, 0);
+
+            var currentPhase = '';
+            window.duskIsoImport.importIso(file, {
+                onPhase: function (name) {
+                    currentPhase = name;
+                    setStatus(phaseLabel(name), false);
+                    // Only the ciso-convert phase emits per-block progress.
+                    if (name !== 'ciso-convert') setProgress(0, 0);
+                },
+                onProgress: function (cur, total) {
+                    if (currentPhase === 'ciso-convert') {
+                        setStatus('Converting to CISO (block ' + cur + '/' + total + ')...', false);
+                        setProgress(cur, total);
+                    }
+                },
+            }).then(function (result) {
+                // CISO is in MEMFS; main() was deferred via noInitialRun=true. We
+                // start it here directly — no reload needed. If persistence to
+                // IDBFS failed (Chrome's ~1 GB blob cap), warn the user that the
+                // import doesn't survive a reload but the game runs this session.
+                if (result && result.persisted === false) {
+                    setStatus('Loaded (this session only — your browser refused to ' +
+                              'persist the 1 GB disc image, so re-upload after reload).',
+                              false);
+                } else {
+                    setStatus('Loaded. Starting game.', false);
+                }
+                setProgress(0, 0);
+                hideDropZone();
+                document.getElementById('canvas').focus();
+                // Wrap callMain in its own try so we can distinguish import errors
+                // (caught below) from runtime errors thrown by main(). Use
+                // Module.getExceptionMessage to surface the actual C++ what() string
+                // instead of the opaque "CppException" Promise rejection value.
+                try {
+                    // Pass the CISO path as positional argv. dusk's m_Do_main.cpp
+                    // parses it via cxxopts as the `--dvd` option (it's also
+                    // declared positional, see arg_options.parse_positional).
+                    Module.callMain([window.duskIsoImport.CISO_OUT_PATH]);
+                } catch (mainErr) {
+                    var detail = String(mainErr && mainErr.message ? mainErr.message : mainErr);
+                    if (typeof Module.getExceptionMessage === 'function' &&
+                        mainErr && typeof mainErr === 'object') {
+                        try {
+                            var msg = Module.getExceptionMessage(mainErr);
+                            if (msg && msg.length >= 2) {
+                                detail = '[' + msg[0] + '] ' + msg[1];
+                            }
+                        } catch (_) { /* not a wasm exception */ }
+                    }
+                    // EXCEPTION_STACK_TRACES=1 attaches the throw-site wasm stack
+                    // to the exception object — log it so we can see which native
+                    // function originated the throw.
+                    var stack = (mainErr && mainErr.stack) || '<no stack>';
+                    console.error('[dusk] main() threw:', detail);
+                    console.error('[dusk] stack:', stack);
+                    setStatus('main() threw: ' + detail, true);
+                    dropZone.classList.remove('hidden');
+                }
+            }).catch(function (err) {
+                importing = false;
+                setProgress(0, 0);
+                console.error('[dusk] ISO import failed:', err);
+                setStatus(String(err && err.message ? err.message : err), true);
+            });
+        }
+
+        function hideDropZone() {
+            dropZone.classList.add('hidden');
+        }
+
+        fileInput.addEventListener('change', function (ev) {
+            var f = ev.target.files && ev.target.files[0];
+            if (f) startImport(f);
+        });
+
+        // Drag-and-drop. Listen on the whole drop-zone overlay so the user
+        // can drop anywhere over the dimmed area, not just the card.
+        ['dragenter', 'dragover'].forEach(function (evt) {
+            dropZone.addEventListener(evt, function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('dragging');
+            });
+        });
+        ['dragleave', 'drop'].forEach(function (evt) {
+            dropZone.addEventListener(evt, function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (evt === 'dragleave' && e.target !== dropZone) return;
+                dropZone.classList.remove('dragging');
+            });
+        });
+        dropZone.addEventListener('drop', function (e) {
+            var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (f) startImport(f);
+        });
+
+        /* ── Emscripten Module hooks ──────────────────────────────────────
+         * `Module` must exist in the global scope before emcc loads index.js
+         * (it reads `Module` during startup). pre.js's preRun callback mounts
+         * /iso as IDBFS and uses addRunDependency to defer main() until the
+         * IndexedDB rehydrate completes. By the time onRuntimeInitialized
+         * fires, /iso has been rehydrated and FS is safe to query — that's
+         * where we decide whether to show the drop-zone.
+         *
+         * Do NOT mention emcc's shell-file substitution token verbatim, and do
+         * NOT spell out a closing script tag here — the HTML parser terminates
+         * an inline script tag the moment it sees the close-tag token, even
+         * inside a JS comment. That bricks everything below this line.
+         */
+        var Module = {
+            // Don't auto-launch main() after preRun. Aurora unconditionally tries
+            // to open /iso/dusk.ciso during init, and on a fresh page (no CISO yet)
+            // that throws and unwinds main() — killing the runtime before the user
+            // can drop an ISO. We start main() ourselves below, only when CISO
+            // is present in IDBFS.
+            noInitialRun: true,
+            // Pass the CISO path as the positional --dvd arg so dusk's settings
+            // pick it up (m_Do_main.cpp:791 sets backend.isoPath from this).
+            arguments: ['/iso/dusk.ciso'],
+            canvas: (function () {
+                var c = document.getElementById('canvas');
+                c.addEventListener('webglcontextlost', function (e) {
+                    e.preventDefault();
+                    setStatus('GPU context lost. Please reload the page.', true);
+                    dropZone.classList.remove('hidden');
+                }, false);
+                return c;
+            })(),
+            setStatus: function (text) {
+                bootStatusEl.textContent = text || '';
+            },
+            print:    function (text) { console.log(text); },
+            printErr: function (text) { console.warn(text); },
+            // Capture the wasm stack at abort time. abort() comes from many
+            // sources (assert, std::terminate, abort()) and emcc's default
+            // Aborted(...) message rarely says which one. The Error here gets
+            // its stack from V8 at the JS frame that called abort, which
+            // includes the wasm function names if EXCEPTION_STACK_TRACES is on.
+            onAbort: function (reason) {
+                var e = new Error('abort: ' + reason);
+                console.error('[dusk] onAbort:', reason);
+                console.error('[dusk] wasm stack at abort:\n' + (e.stack || '<no stack>'));
+            },
+            onRuntimeInitialized: function () {
+                bootStatusEl.textContent = '';
+                try {
+                    var info = FS.analyzePath(window.duskIsoImport.CISO_OUT_PATH);
+                    if (info && info.exists) {
+                        // CISO present (returning user) — start the game.
+                        hideDropZone();
+                        document.getElementById('canvas').focus();
+                        Module.callMain();
+                    }
+                    // else: leave drop-zone visible; importIso will reload after
+                    // writing the CISO, and the second pass takes the branch above.
+                } catch (e) {
+                    console.warn('[dusk] CISO presence check / callMain failed:', e);
+                }
+            },
+        };
+        window.Module = Module;
+
+        window.onerror = function (msg, src, line, col, err) {
+            bootStatusEl.textContent = 'error - check console';
+            console.error('[dusk] window.onerror:', msg);
+            if (err && err.stack) console.error('[dusk] window.onerror stack:\n' + err.stack);
+        };
+        window.addEventListener('unhandledrejection', function (e) {
+            console.error('[dusk] unhandledrejection:', e.reason);
+            if (e.reason && e.reason.stack) console.error('[dusk] unhandledrejection stack:\n' + e.reason.stack);
+        });
+    })();
+    </script>
+
+    {{{ SCRIPT }}}
+</body>
+</html>

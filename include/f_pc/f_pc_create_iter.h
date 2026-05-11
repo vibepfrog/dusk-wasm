@@ -27,7 +27,7 @@ typedef struct fpcCtIt_jilprm_c {
 
 int fpcCtIt_Method(fpcCtIt_MethodFunc i_method, void* i_data);
 void* fpcCtIt_Judge(fpcCtIt_JudgeFunc i_judge, void* i_data);
-void* fpcCtIt_filter_JudgeInLayer(create_tag* i_createTag, fpcCtIt_jilprm_c* i_iterData);
+void* fpcCtIt_filter_JudgeInLayer(void* i_createTag, void* i_iterData);
 void* fpcCtIt_JudgeInLayer(unsigned int i_layerID, fpcCtIt_JudgeFunc i_method, void* i_data);
 
 #endif

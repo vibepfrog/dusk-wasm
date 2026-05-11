@@ -621,7 +621,8 @@ void dAttention_c::initList(u32 flags) {
     setFlag(0x1000);
 }
 
-static int select_attention(fopAc_ac_c* i_actor, void* i_attention) {
+static int select_attention(void* i_actorVoid, void* i_attention) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     if (i_actor->attention_info.flags == 0) {
         return 0;
     }
@@ -632,7 +633,7 @@ static int select_attention(fopAc_ac_c* i_actor, void* i_attention) {
 }
 
 int dAttention_c::makeList() {
-    fopAcIt_Executor((fopAcIt_ExecutorFunc)select_attention, this);
+    fopAcIt_Executor(select_attention, this);
     setFlag(0x2000);
     return mLockonCount + mActionCount + mCheckObjectCount;
 }
@@ -851,7 +852,8 @@ f32 dAttention_c::EnemyDistance(fopAc_ac_c* i_actor) {
     return -1.0f;
 }
 
-static int sound_attention(fopAc_ac_c* i_actor, void* i_attention) {
+static int sound_attention(void* i_actorVoid, void* i_attention) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     dAttention_c* attention = (dAttention_c*)i_attention;
 
     f32 dist = attention->EnemyDistance(i_actor);
@@ -873,7 +875,7 @@ void dAttention_c::runSoundProc() {
 
     fopAc_ac_c* enemy_p;
     if (!chkFlag(0x80000000)) {
-        fopAcIt_Executor((fopAcIt_ExecutorFunc)sound_attention, this);
+        fopAcIt_Executor(sound_attention, this);
 
         enemy_p = fopAcM_SearchByID(mEnemyActorID);
         if (enemy_p != NULL) {

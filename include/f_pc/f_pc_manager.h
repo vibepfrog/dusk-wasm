@@ -99,9 +99,9 @@ inline process_node_class* fpcM_Layer(void* i_process) {
     return ((base_process_class*)i_process)->layer_tag.layer->process_node;
 }
 
-void fpcM_Draw(void* i_process);
+int fpcM_Draw(void* i_process, void* /*unused*/);
 int fpcM_DrawIterater(fpcM_DrawIteraterFunc i_drawIterFunc);
-int fpcM_Execute(void* i_process);
+int fpcM_Execute(void* i_process, void* /*unused*/);
 int fpcM_Delete(void* i_process);
 BOOL fpcM_IsCreating(fpc_ProcID i_id);
 void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_postExecuteFn);

@@ -3873,8 +3873,9 @@ int daAlink_c::procWolfSlopeStart() {
     return 1;
 }
 
-static fopAc_ac_c* daAlink_searchGoldWolf(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchGoldWolf(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_NPC_GWOLF_e) {
         return i_actor;
@@ -3883,7 +3884,8 @@ static fopAc_ac_c* daAlink_searchGoldWolf(fopAc_ac_c* i_actor, void* i_data) {
     return NULL;
 }
 
-static void* daAlink_searchWolfHowl(fopAc_ac_c* i_actor, void* i_data) {
+static int daAlink_searchWolfHowl(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     s16 actor_name = fopAcM_GetName(i_actor);
     fopAc_ac_c** var_r30 = (fopAc_ac_c**)i_data;
     daAlink_c* player_p = daAlink_getAlinkActorClass();
@@ -3897,7 +3899,7 @@ static void* daAlink_searchWolfHowl(fopAc_ac_c* i_actor, void* i_data) {
         *var_r30 = i_actor;
     }
 
-    return NULL;
+    return 0;
 }
 
 void daAlink_c::setWolfHowlNotHappen(int param_0) {
@@ -4045,7 +4047,7 @@ int daAlink_c::procWolfHowlDemoInit() {
     mDoAud_taktModeMute();
 
     if (checkStageName("F_SP200")) {
-        field_0x280c.setData((fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchGoldWolf, NULL));
+        field_0x280c.setData((fopAc_ac_c*)fopAcIt_Judge(daAlink_searchGoldWolf, NULL));
     } else {
         field_0x280c.clearData();
     }
@@ -4170,7 +4172,7 @@ int daAlink_c::procWolfHowlDemo() {
 
                         fopAc_ac_c* actor_p = NULL;
                         if (gwolf_p == NULL) {
-                            fopAcIt_Executor((fopAcIt_ExecutorFunc)daAlink_searchWolfHowl,
+                            fopAcIt_Executor(daAlink_searchWolfHowl,
                                              &actor_p);
                         } else {
                             actor_p = gwolf_p;
@@ -5304,7 +5306,8 @@ int daAlink_c::procWolfTagJumpLand() {
     return 1;
 }
 
-static fopAc_ac_c* daAlink_searchGiant(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchGiant(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     cXyz* gnd_chk_pos = static_cast<cXyz*>(i_data);
 
     if (fopAcM_GetName(i_actor) == fpcNm_OBJ_SEKIZOA_e &&
@@ -5316,8 +5319,9 @@ static fopAc_ac_c* daAlink_searchGiant(fopAc_ac_c* i_actor, void* i_data) {
     return NULL;
 }
 
-static void* daAlink_searchGiantTalk(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchGiantTalk(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_OBJ_SEKIZOA_e &&
         static_cast<daObj_Sekizoa_c*>(i_actor)->getType() == 0)
@@ -5357,7 +5361,7 @@ int daAlink_c::procWolfGiantPuzzle() {
         setDoStatusEmphasys(BUTTON_STATUS_SPEAK);
 
         if (doTrigger()) {
-            fopAc_ac_c* giant_p = (fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchGiantTalk, NULL);
+            fopAc_ac_c* giant_p = (fopAc_ac_c*)fopAcIt_Judge(daAlink_searchGiantTalk, NULL);
             if (giant_p != NULL) {
                 fopAcM_orderTalkEvent(this, giant_p, 0, 0);
             }
@@ -5370,7 +5374,7 @@ int daAlink_c::procWolfGiantPuzzle() {
                 mLinkGndChk.SetPos(&gnd_chk_pos);
 
                 if (fabsf(dComIfG_Bgsp().GroundCross(&mLinkGndChk) - current.pos.y) < 0.1f &&
-                    fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchGiant, &gnd_chk_pos) == NULL)
+                    fopAcIt_Judge(daAlink_searchGiant, &gnd_chk_pos) == NULL)
                 {
                     field_0x347c = mpHIO->mWolf.mWlMoveNoP.m.mAcceleration;
                     field_0x3478 = mMaxSpeed;
@@ -6991,7 +6995,8 @@ void daAlink_c::searchWolfLockEnemy(fopAc_ac_c* i_actor, void* i_data) {
     }
 }
 
-static int daAlink_searchWolfLockEnemy(fopAc_ac_c* i_actor, void* i_data) {
+static int daAlink_searchWolfLockEnemy(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     daAlink_getAlinkActorClass()->searchWolfLockEnemy(i_actor, i_data);
     return 0;
 }
@@ -7217,7 +7222,7 @@ int daAlink_c::procWolfRollAttackMove() {
                 field_0x3478 = mSearchBallScale * mSearchBallScale;
 
                 fopAc_ac_c* lock_actor_p = NULL;
-                fopAcIt_Executor((fopAcIt_ExecutorFunc)daAlink_searchWolfLockEnemy, &lock_actor_p);
+                fopAcIt_Executor(daAlink_searchWolfLockEnemy, &lock_actor_p);
 
                 if (lock_actor_p != NULL) {
                     for (int i = mWolfLockNum - 1; i >= 0; i--) {
@@ -8656,8 +8661,9 @@ int daAlink_c::procWolfPush() {
     return 1;
 }
 
-static fopAc_ac_c* daAlink_searchEnemyCargo(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchEnemyCargo(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_E_YC_e) {
         return i_actor;
@@ -8683,7 +8689,7 @@ int daAlink_c::procWolfCargoCarryInit() {
         mProcVar2.field_0x300c = 0;
 
         fopAc_ac_c* cargo_actor =
-            (fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchEnemyCargo, NULL);
+            (fopAc_ac_c*)fopAcIt_Judge(daAlink_searchEnemyCargo, NULL);
         if (cargo_actor != NULL) {
             field_0x280c.setData(cargo_actor);
         }

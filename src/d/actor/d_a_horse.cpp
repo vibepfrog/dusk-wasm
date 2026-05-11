@@ -484,7 +484,8 @@ static void daHorse_coHitCallbackAll(fopAc_ac_c* i_coActorA, dCcD_GObjInf* i_coO
     a_this->coHitCallbackCowHit(i_coActorB);
 }
 
-static void* daHorse_searchEnemy(fopAc_ac_c* i_actor, void* i_data) {
+static void* daHorse_searchEnemy(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     daHorse_c* horse_p = dComIfGp_getHorseActor();
     f32 search_dist = *(f32*)i_data;
 
@@ -586,13 +587,14 @@ static int daHorse_modelCallBack(J3DJoint* i_joint, int param_1) {
     return 1;
 }
 
-static void* daHorse_searchSingleBoar(fopAc_ac_c* i_actor, void* i_data) {
+static int daHorse_searchSingleBoar(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     if (fopAcM_GetName(i_actor) == fpcNm_E_WB_e) {
         fopAc_ac_c** ppActor = (fopAc_ac_c**)i_data;
         *ppActor = i_actor;
     }
 
-    return NULL;
+    return 0;
 }
 
 int daHorse_c::createHeap() {
@@ -2087,7 +2089,7 @@ int daHorse_c::setSpeedAndAngle() {
 
     if (checkStateFlg0(daHorse_FLG0(FLG0_UNK_100000 | FLG0_UNK_200000))) {
         fopAc_ac_c* boar_p = NULL;
-        fopAcIt_Executor((fopAcIt_ExecutorFunc)daHorse_searchSingleBoar, &boar_p);
+        fopAcIt_Executor(daHorse_searchSingleBoar, &boar_p);
 
         if (checkInputOnR() && boar_p != NULL && fopAcM_seenActorAngleY(this, boar_p) < 0x4000 && boar_p->current.pos.abs2XZ(current.pos) < 2250000.0f) {
             s16 sp8;
@@ -3658,7 +3660,7 @@ int daHorse_c::procWait() {
     }
 
     f32 enemy_search_range = m_hio->m.enemy_search_range;
-    if ((!checkInputOnR() || !checkStateFlg0(FLG0_UNK_1)) && fopAcIt_Judge((fopAcIt_JudgeFunc)daHorse_searchEnemy, &enemy_search_range) != NULL) {
+    if ((!checkInputOnR() || !checkStateFlg0(FLG0_UNK_1)) && fopAcIt_Judge(daHorse_searchEnemy, &enemy_search_range) != NULL) {
         onResetStateFlg0(RFLG0_ENEMY_SEARCH);
 
         if (field_0x170c == 0 && !checkStateFlg0(daHorse_FLG0(FLG0_UNK_200000 | FLG0_UNK_100000)) && !dComIfGp_event_runCheck() && !player->checkHorseRideReady() && !player->checkHorseLieAnime() && !checkStateFlg0(FLG0_PLAYER_BACK_RIDE_LASH) && !checkStateFlg0(FLG0_UNK_1)) {
@@ -4424,15 +4426,16 @@ void daHorse_c::searchSceneChangeArea(fopAc_ac_c* i_scnChg) {
     }
 }
 
-static void* daHorse_searchSceneChangeArea(fopAc_ac_c* i_actor, void* i_data) {
+static int daHorse_searchSceneChangeArea(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     dComIfGp_getHorseActor()->searchSceneChangeArea(i_actor);
-    return NULL;
+    return 0;
 }
 
 int daHorse_c::execute() {
     m_scnChg_num = 0;
-    fopAcIt_Executor((fopAcIt_ExecutorFunc)daHorse_searchSceneChangeArea, NULL);
+    fopAcIt_Executor(daHorse_searchSceneChangeArea, NULL);
     m_zeldaActorKeep.setActor();
 
     if (checkStateFlg0(FLG0_NO_DRAW_WAIT)) {

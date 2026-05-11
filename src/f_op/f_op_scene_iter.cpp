@@ -17,5 +17,5 @@ void* fopScnIt_Judge(fop_ScnItFunc i_judgeFunc, void* i_data) {
 
     userdata.func = i_judgeFunc;
     userdata.data = i_data;
-    return cLsIt_Judge(&g_fopScnTg_SceneList, (cNdIt_JudgeFunc)cTgIt_JudgeFilter, &userdata);
+    return cLsIt_Judge(&g_fopScnTg_SceneList, cTgIt_JudgeFilter, &userdata);
 }

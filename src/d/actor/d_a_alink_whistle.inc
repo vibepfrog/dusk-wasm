@@ -10,8 +10,9 @@
 #include "d/actor/d_a_npc_tk.h"
 #include "d/actor/d_a_obj_yobikusa.h"
 
-static fopAc_ac_c* daAlink_searchWhistle(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchWhistle(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (daAlink_getAlinkActorClass()->getGrassHowlEventActor() == fopAcM_GetName(i_actor)) {
         return i_actor;
@@ -20,8 +21,9 @@ static fopAc_ac_c* daAlink_searchWhistle(fopAc_ac_c* i_actor, void* i_data) {
     return NULL;
 }
 
-static fopAc_ac_c* daAlink_searchHawk(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchHawk(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_NPC_TK_e) {
         return i_actor;
@@ -191,7 +193,7 @@ int daAlink_c::procGrassWhistleWait() {
 
         if (mProcVar0.field_0x3008 == 0) {
             daHorse_c* horse_p = (daHorse_c*)dComIfGp_getHorseActor();
-            daNPC_TK_c* tk_p = (daNPC_TK_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchWhistle, NULL);
+            daNPC_TK_c* tk_p = (daNPC_TK_c*)fopAcIt_Judge(daAlink_searchWhistle, NULL);
 
             if (tk_p != NULL) {
                 fopAcM_OnStatus(tk_p, 0x800);
@@ -339,7 +341,7 @@ int daAlink_c::procHawkSubjectInit() {
 
     setSingleAnimeBase(ANM_HAWK_WAIT);
 
-    fopAc_ac_c* hawk_p = (fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchHawk, NULL);
+    fopAc_ac_c* hawk_p = (fopAc_ac_c*)fopAcIt_Judge(daAlink_searchHawk, NULL);
     if (hawk_p != NULL) {
         field_0x280c.setData(hawk_p);
     }

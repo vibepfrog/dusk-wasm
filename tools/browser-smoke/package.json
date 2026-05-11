@@ -1,0 +1,13 @@
+{
+  "name": "dusk-browser-smoke",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "description": "Headless Chrome smoke test for the dusk WASM build. Drives the user's installed Chrome via puppeteer-core (no Chromium download).",
+  "scripts": {
+    "smoke": "node smoke.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

@@ -100,9 +100,40 @@ set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "_cmake")
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)
   set(DAWN_USE_WAYLAND ON CACHE BOOL "Enable support for Wayland surface" FORCE)
 endif ()
+
+if (EMSCRIPTEN)
+  # emsdk's Emscripten.cmake toolchain sets CMAKE_AR to emar.bat as a normal
+  # (non-cache) variable, so it shadows our cache override in every scope where
+  # project() re-runs the toolchain. cargo's cc-rs spawns AR directly with full
+  # argv; .bat scripts go through cmd.exe whose parsing limit is ~8190 chars,
+  # and liblzma-sys/libz-sys/zstd-sys/bzip2-sys ar invocations exceed that.
+  # Skip emar.bat and use emsdk's bundled llvm-ar.exe directly — it's a real
+  # .exe, no cmd.exe involved, and emar.py adds nothing critical for plain
+  # static-archive creation (it mostly handles LTO bitcode bookkeeping which
+  # we don't use). Force CACHE + unset local so the cache wins in this scope.
+  if (NOT DEFINED ENV{EMSDK})
+    message(FATAL_ERROR "EMSDK env var not set; activate emsdk before configuring.")
+  endif ()
+  set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar.exe" CACHE FILEPATH
+      "Use emsdk's bundled llvm-ar instead of emar.bat (avoids cmd.exe argv limit)" FORCE)
+  unset(CMAKE_AR)
+  set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar.exe")
+
+  # emcc compiles C++ with exceptions DISABLED by default — every try/catch is
+  # elided and throws unwind straight past them to JS as uncaught CppException.
+  # Enable at the directory level BEFORE add_subdirectory(extern/aurora) so all
+  # aurora + JSystem + dusk targets compile with exception support. Linker
+  # already gets -fexceptions via target_link_options on dusk below.
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexceptions>)
+endif ()
+
 set(AURORA_ENABLE_DVD ON CACHE BOOL "Enable DVD API support" FORCE)
 set(AURORA_ENABLE_CARD ON CACHE BOOL "Enable CARD API support" FORCE)
-set(AURORA_ENABLE_RMLUI ON CACHE BOOL "Enable RmlUi UI support" FORCE)
+if (NOT EMSCRIPTEN)
+    # RmlUi has no documented Emscripten target; the web preset disables it via
+    # AURORA_ENABLE_RMLUI=OFF. Forcing it ON here would clobber that.
+    set(AURORA_ENABLE_RMLUI ON CACHE BOOL "Enable RmlUi UI support" FORCE)
+endif ()
 add_subdirectory(extern/aurora EXCLUDE_FROM_ALL)
 target_compile_definitions(aurora_mtx PRIVATE MTX_USE_PS=1)
 
@@ -452,7 +483,9 @@ if (ANDROID)
     target_link_options(dusk PRIVATE "-Wl,-u,SDL_main")
 endif ()
 
-if (NOT APPLE)
+if (NOT APPLE AND NOT EMSCRIPTEN)
+    # Emscripten ships res/ via emcc's --preload-file in the EMSCRIPTEN block below,
+    # bundling it into index.data — no POST_BUILD copy needed.
     add_custom_command(TARGET dusk POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/res"
@@ -461,7 +494,7 @@ if (NOT APPLE)
     )
 endif ()
 
-if (WIN32)
+if (WIN32 AND NOT EMSCRIPTEN)
     set(DUSK_WINDOWS_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platforms/windows)
     set(DUSK_WINDOWS_ICON_PNG ${CMAKE_CURRENT_SOURCE_DIR}/res/icon.png)
     set(DUSK_WINDOWS_ICON_ICO ${CMAKE_CURRENT_BINARY_DIR}/dusk.ico)
@@ -488,6 +521,88 @@ if (WIN32)
     if (MSVC)
         target_link_options(dusk PRIVATE /MANIFEST:NO)
     endif ()
+endif ()
+
+if (EMSCRIPTEN)
+    # Emit `index.{html,js,wasm,data}` directly under build/.../web/ — GitHub Pages
+    # serves the wasm shell at the repo root URL with no rename step in CI.
+    set_target_properties(dusk PROPERTIES
+        OUTPUT_NAME "index"
+        SUFFIX ".html"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/web"
+    )
+    target_link_options(dusk PRIVATE
+        # Aurora links emdawnwebgpu via the AuroraDawnProvider `emscripten` mode;
+        # disable emcc's older built-in WebGPU so the two don't fight over symbols.
+        -sUSE_WEBGPU=0
+        # Enable C++ exception support: rust's wasm32-unknown-emscripten target emits
+        # objects that reference __cpp_exception from libcxxabi (libnod.a does so via
+        # cargo's default panic=unwind). -fexceptions enables EH at compile/link;
+        # -sDISABLE_EXCEPTION_CATCHING=0 forces the runtime catch tables + libcxxabi
+        # personality routine (which provides __cpp_exception) to be linked even when
+        # consumer code doesn't visibly throw.
+        -fexceptions
+        -sDISABLE_EXCEPTION_CATCHING=0
+        -sALLOW_MEMORY_GROWTH=1
+        # 256 MB initial — TP carries more model/audio/movie data than slider's AC,
+        # so we start above slider's 128 MB to avoid an early grow stutter.
+        -sINITIAL_MEMORY=268435456
+        # 2 GB ceiling: hard wasm32 limit is 4 GB but most browsers cap user wasm
+        # heaps lower; 2 GB is safe across Chrome/Edge/Safari/Firefox.
+        -sMAXIMUM_MEMORY=2147483648
+        -sSTACK_SIZE=5242880
+        -sASYNCIFY=1
+        # 4 MB Asyncify stack: Aurora's command-processor + WaitAny chains can be deep.
+        # JSPI would obsolete Asyncify but isn't universally shipped — see
+        # docs/wasm-port-notes.md for the WebKit-bug-#304810 rationale.
+        -sASYNCIFY_STACK_SIZE=4194304
+        -sEXIT_RUNTIME=0
+        -sFORCE_FILESYSTEM=1
+        # Required for FS.syncfs() against /save and /iso — see web/pre.js.
+        -lidbfs.js
+        # Modern emcc strips runtime exports unless asked. The shell uses callMain
+        # (we set noInitialRun=true to defer main() until /iso/dusk.ciso exists),
+        # FS+IDBFS for the CISO write, addRun/removeRun deps in pre.js for the
+        # IDBFS rehydrate gate, and getExceptionMessage so we can extract the
+        # actual C++ what() string when main() throws a CppException.
+        "SHELL:-sEXPORTED_RUNTIME_METHODS=callMain,FS,IDBFS,addRunDependency,removeRunDependency,getExceptionMessage"
+        # Sanity-check assertions in the wasm runtime — clearer error messages,
+        # stack-overflow checks, and abort messages instead of opaque "CppException".
+        # Slight bundle-size hit but invaluable during Phase 2 runtime triage.
+        -sASSERTIONS=1
+        # Capture the wasm stack trace at C++ throw time and attach it to the JS
+        # exception object — without this, Module.getExceptionMessage gives the
+        # what() string but no source location, making it nearly impossible to
+        # narrow down which Aurora call site threw.
+        -sEXCEPTION_STACK_TRACES=1
+        # Preserve wasm function names in the name section so DevTools and our
+        # onAbort handler show "aurora::webgpu::create_copy_pipeline" instead of
+        # "wasm-function[47325]". Pure diagnostic; no runtime cost.
+        --profiling-funcs
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/res@/res"
+        "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
+        "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/pre.js"
+        # Provide JS shims for Rust panic_unwind imports (nod's transitive deps
+        # may use panic=unwind even with our workspace panic=abort env). Without
+        # this, wasm has unresolved _Unwind_RaiseException import → LinkError on
+        # WebAssembly.instantiate(). Shim aborts loudly if Rust ever panics.
+        "SHELL:--js-library ${CMAKE_SOURCE_DIR}/web/unwind_shim.js"
+    )
+    # CMake doesn't auto-track --shell-file / --pre-js inputs as link deps; declare them
+    # explicitly so editing the shell or the pre-js triggers a re-link.
+    set_property(TARGET dusk APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_SOURCE_DIR}/web/shell.html"
+        "${CMAKE_SOURCE_DIR}/web/pre.js"
+        "${CMAKE_SOURCE_DIR}/web/unwind_shim.js"
+    )
+    # iso_bridge.js is loaded by the HTML shell at runtime (file-picker → CISO writer),
+    # not linked into the wasm — copy it next to index.html so the <script> tag resolves.
+    add_custom_command(TARGET dusk POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/web/iso_bridge.js"
+            "${CMAKE_BINARY_DIR}/web/iso_bridge.js"
+        COMMENT "Copying ISO bridge JS"
+    )
 endif ()
 
 if (APPLE)

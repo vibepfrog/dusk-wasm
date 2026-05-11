@@ -100,7 +100,7 @@ int daTagSpinner_c::create() {
 
 int daTagSpinner_c::execute() {
     daSpinner_c* mpSpinner =
-        (daSpinner_c*)fopAcM_Search((fopAcIt_JudgeFunc)search_spinner_sub, this);
+        (daSpinner_c*)fopAcM_Search(search_spinner_sub, this);
 
     if (mpSpinner) {
         mpSpinner->setSpinnerTag(current.pos);

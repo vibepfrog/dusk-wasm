@@ -22,7 +22,7 @@ typedef struct delete_tag_class {
 BOOL fpcDtTg_IsEmpty();
 void fpcDtTg_ToDeleteQ(delete_tag_class* i_deleteTag);
 void fpcDtTg_DeleteQTo(delete_tag_class* i_deleteTag);
-int fpcDtTg_Do(delete_tag_class* i_deleteTag, delete_tag_func i_func);
+int fpcDtTg_Do(node_class* i_deleteTag, void* i_func);
 int fpcDtTg_Init(delete_tag_class* i_deleteTag, void* i_data);
 
 extern node_list_class g_fpcDtTg_Queue;

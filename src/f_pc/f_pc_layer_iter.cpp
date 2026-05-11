@@ -12,7 +12,7 @@ int fpcLyIt_OnlyHere(layer_class* i_layer, fpcLyIt_OnlyHereFunc i_func, void* i_
     layer_iter iter;
     iter.func = (void*)i_func;
     iter.data = i_data;
-    return cTrIt_Method(&i_layer->node_tree, (cNdIt_MethodFunc)cTgIt_MethodCall, &iter);
+    return cTrIt_Method(&i_layer->node_tree, cTgIt_MethodCall, &iter);
 }
 
 int fpcLyIt_OnlyHereLY(layer_class* i_layer, fpcLyIt_OnlyHereFunc i_func, void* i_data) {
@@ -35,7 +35,7 @@ int fpcLyIt_All(fpcLyIt_OnlyHereFunc i_func, void* i_data) {
     iter.data = i_data;
 
     for (layer = fpcLy_RootLayer(); layer != NULL; layer = (layer_class*)layer->node.mpNextNode) {
-        if (cTrIt_Method(&layer->node_tree, (cNdIt_MethodFunc)cTgIt_MethodCall, &iter) == 0) {
+        if (cTrIt_Method(&layer->node_tree, cTgIt_MethodCall, &iter) == 0) {
             ret = 0;
         }
     }
@@ -47,7 +47,7 @@ void* fpcLyIt_Judge(layer_class* i_layer, fpcLyIt_JudgeFunc i_func, void* i_data
     layer_iter iter;
     iter.func = (void*)i_func;
     iter.data = i_data;
-    return cTrIt_Judge(&i_layer->node_tree, (cNdIt_JudgeFunc)cTgIt_JudgeFilter, &iter);
+    return cTrIt_Judge(&i_layer->node_tree, cTgIt_JudgeFilter, &iter);
 }
 
 void* fpcLyIt_AllJudge(fpcLyIt_JudgeFunc i_func, void* i_data) {
@@ -59,7 +59,7 @@ void* fpcLyIt_AllJudge(fpcLyIt_JudgeFunc i_func, void* i_data) {
     iter.data = i_data;
 
     for (layer = fpcLy_RootLayer(); layer != NULL; layer = (layer_class*)layer->node.mpNextNode) {
-        ret = cTrIt_Judge(&layer->node_tree, (cNdIt_JudgeFunc)cTgIt_JudgeFilter, &iter);
+        ret = cTrIt_Judge(&layer->node_tree, cTgIt_JudgeFilter, &iter);
         if (ret != NULL) {
             return ret;
         }

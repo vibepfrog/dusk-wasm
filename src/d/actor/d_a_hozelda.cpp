@@ -22,8 +22,9 @@ void daHoZelda_hio_c::genMessage(JORMContext* context) {
 }
 #endif
 
-static void* daHoZelda_searchGanon(fopAc_ac_c* i_actor, void* i_data) {
+static void* daHoZelda_searchGanon(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     if (fopAcM_GetName(i_actor) == fpcNm_B_GND_e) {
         return i_actor;
     }
@@ -870,7 +871,7 @@ int daHoZelda_c::execute() {
     mGndAcKeep.setActor();
 
     if (mGndAcKeep.getActor() == NULL) {
-        mGndAcKeep.setData((fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daHoZelda_searchGanon, NULL));
+        mGndAcKeep.setData((fopAc_ac_c*)fopAcIt_Judge(daHoZelda_searchGanon, NULL));
     }
 
     daHorse_c* horse = dComIfGp_getHorseActor();

@@ -26,8 +26,9 @@ enum daAlink_CutFinishParamType {
     CUT_FINISH_PARAM_RIGHT,
 };
 
-static fopAc_ac_c* daAlink_searchNightStalker(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchNightStalker(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     if (fopAcM_GetName(i_actor) == fpcNm_E_S1_e) {
         daPy_py_c* player_p = daPy_getLinkPlayerActorClass();
         if (player_p->current.pos.abs2XZ(i_actor->current.pos) < SQUARE(500.0f) &&
@@ -45,7 +46,7 @@ static fopAc_ac_c* daAlink_searchNightStalker(fopAc_ac_c* i_actor, void* i_data)
 void daAlink_c::checkLightSwordMtrl() {
     if (checkLightMasterSwordEquip()) {
         if (dStage_stagInfo_GetSaveTbl(dComIfGp_getStage()->getStagInfo()) == dStage_SaveTbl_LV8 ||
-            fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchNightStalker, NULL))
+            fopAcIt_Judge(daAlink_searchNightStalker, NULL))
         {
             onNoResetFlg3(FLG3_UNK_100000);
             return;

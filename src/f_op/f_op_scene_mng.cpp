@@ -11,7 +11,7 @@
 #include "dusk/logging.h"
 
 scene_class* fopScnM_SearchByID(fpc_ProcID id) {
-    return (scene_class*)fopScnIt_Judge((fop_ScnItFunc)fpcSch_JudgeByID, &id);
+    return (scene_class*)fopScnIt_Judge(fpcSch_JudgeByID, &id);
 }
 
 static fpc_ProcID l_scnRqID = fpcM_ERROR_PROCESS_ID_e;

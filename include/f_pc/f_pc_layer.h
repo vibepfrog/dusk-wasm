@@ -42,7 +42,7 @@ int fpcLy_ToQueue(layer_class* i_layer, int treeListIdx, create_tag_class* i_cre
 int fpcLy_QueueTo(layer_class* i_layer, create_tag_class* i_createTag);
 
 int fpcLy_Cancel(layer_class* i_layer);
-BOOL fpcLy_CancelMethod(process_method_tag_class* i_layer);
+int fpcLy_CancelMethod(node_class* i_layer, void* /*unused*/);
 
 void fpcLy_CancelQTo(process_method_tag_class* i_methods);
 int fpcLy_ToCancelQ(layer_class* i_layer, process_method_tag_class* i_methods);

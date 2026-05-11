@@ -8410,7 +8410,7 @@ public:
 
 static bool daAlink_checkLightBallA(fopAc_ac_c* i_actor);
 static bool daAlink_checkLightBallB(fopAc_ac_c* i_actor);
-static fopAc_ac_c* daAlink_searchCoach(fopAc_ac_c* i_actor, void* param_1);
+static void* daAlink_searchCoach(void* i_actor, void* param_1);
 
 struct daAlink_cutParamTbl {
     /* 0x0 */ daAlink_c::daAlink_ANM m_anmID;
@@ -8434,10 +8434,10 @@ struct daAlink_cutHorseParamTbl {
 inline BOOL dComIfGs_isTransformLV(int i_no);
 inline BOOL dComIfGs_isEventBit(const u16);
 
-static fopAc_ac_c* daAlink_searchPortal(fopAc_ac_c* i_actor, void* i_data);
-static fopAc_ac_c* daAlink_searchCanoe(fopAc_ac_c* i_actor, void* i_data);
-static void* daAlink_searchBoar(fopAc_ac_c* i_actor, void* i_data);
-static fopAc_ac_c* daAlink_searchLightBall(fopAc_ac_c* i_actor, void* i_data);
+static void* daAlink_searchPortal(void* i_actor, void* i_data);
+static void* daAlink_searchCanoe(void* i_actor, void* i_data);
+static void* daAlink_searchBoar(void* i_actor, void* i_data);
+static void* daAlink_searchLightBall(void* i_actor, void* i_data);
 
 inline daAlink_c* daAlink_getAlinkActorClass() {
     return (daAlink_c*)dComIfGp_getLinkPlayer();

@@ -52,8 +52,9 @@ cXyz* daAlink_c::getCanoeLocalPaddleTop() {
     return (cXyz*)&localPaddleTop;
 }
 
-static fopAc_ac_c* daAlink_searchCanoe(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchCanoe(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_CANOE_e && ((daCanoe_c*)i_actor)->getModel() != NULL) {
         return i_actor;
@@ -401,7 +402,7 @@ int daAlink_c::procCanoeJumpRideInit(fopAc_ac_c* i_canoeActor) {
 
     BOOL var_r31;
     if (i_canoeActor == NULL) {
-        i_canoeActor = (daCanoe_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchCanoe, NULL);
+        i_canoeActor = (daCanoe_c*)fopAcIt_Judge(daAlink_searchCanoe, NULL);
         var_r31 = true;
     } else {
         var_r31 = false;

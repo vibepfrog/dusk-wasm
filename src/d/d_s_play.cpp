@@ -655,7 +655,7 @@ static int dScnPly_Draw(dScnPly_c* i_this) {
 
     for (create_tag_class* i = fopDwIt_Begin(); i != NULL; i = fopDwIt_Next(i)) {
         void* process = i->mpTagData;
-        fpcM_Draw(process);
+        fpcM_Draw(process, nullptr);
     }
 
     #if DEBUG

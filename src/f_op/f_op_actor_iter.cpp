@@ -16,7 +16,7 @@ int fopAcIt_Executor(fopAcIt_ExecutorFunc i_execFunc, void* i_data) {
     userData.func = i_execFunc;
     userData.data = i_data;
 
-    return cLsIt_Method(&g_fopAcTg_Queue, (cNdIt_MethodFunc)cTgIt_MethodCall, &userData);
+    return cLsIt_Method(&g_fopAcTg_Queue, cTgIt_MethodCall, &userData);
 }
 
 void* fopAcIt_Judge(fopAcIt_JudgeFunc i_judgeFunc, void* i_data) {
@@ -27,5 +27,5 @@ void* fopAcIt_Judge(fopAcIt_JudgeFunc i_judgeFunc, void* i_data) {
     userData.func = i_judgeFunc;
     userData.data = i_data;
 
-    return cLsIt_Judge(&g_fopAcTg_Queue, (cNdIt_JudgeFunc)cTgIt_JudgeFilter, &userData);
+    return cLsIt_Judge(&g_fopAcTg_Queue, cTgIt_JudgeFilter, &userData);
 }

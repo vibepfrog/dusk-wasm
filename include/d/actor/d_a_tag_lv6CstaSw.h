@@ -8,7 +8,7 @@ class daLv6CstaSw_c : public fopAc_ac_c {
 public:
     void setBaseMtx();
     int create();
-    static fopAc_ac_c* searchSekizoAct(void*, void*);
+    static void* searchSekizoAct(void*, void*);
     bool areaCheck();
     int Execute();
     int Draw();

@@ -1,0 +1,4 @@
+# Puppeteer test runner — generated artifacts shouldn't be committed.
+node_modules/
+smoke-import-*.png
+smoke-screenshot.png

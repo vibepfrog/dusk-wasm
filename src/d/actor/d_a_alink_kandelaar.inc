@@ -10,8 +10,9 @@
 #include "m_Do/m_Do_lib.h"
 #include "SSystem/SComponent/c_math.h"
 
-static fopAc_ac_c* daAlink_searchTagKandelaar(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchTagKandelaar(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_TAG_LANTERN_e) {
         return i_actor;
@@ -20,8 +21,9 @@ static fopAc_ac_c* daAlink_searchTagKandelaar(fopAc_ac_c* i_actor, void* i_data)
     return NULL;
 }
 
-static fopAc_ac_c* daAlink_searchTagKtOnFire(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchTagKtOnFire(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     daAlink_c* player_p = daAlink_getAlinkActorClass();
 
     if (fopAcM_GetName(i_actor) == fpcNm_Tag_KtOnFire_e &&
@@ -368,7 +370,7 @@ int daAlink_c::procKandelaarSwingInit() {
 
     if ((mLinkAcch.ChkGroundHit() && getMoveBGActorName(mLinkAcch.m_gnd, FALSE) == fpcNm_OBJ_WEB1_e) ||
         (checkStageName("F_SP108") &&
-         fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchTagKtOnFire, NULL) != NULL))
+         fopAcIt_Judge(daAlink_searchTagKtOnFire, NULL) != NULL))
     {
         setSingleAnimeParam(ANM_BOTTLE_SWING_DOWN, &mpHIO->mItem.mBottle.m.mSwingDownAnm);
         field_0x3478 = mpHIO->mItem.mBottle.m.mSwingDownAnm.mCancelFrame;

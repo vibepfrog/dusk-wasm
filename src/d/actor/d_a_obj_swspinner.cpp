@@ -113,7 +113,7 @@ int daObjSwSpinner_c::Execute(Mtx** param_0) {
     mPrevAngle = shape_angle.y;
 
     if (mCanUse) {
-        spinner = (daSpinner_c*)fopAcM_Search((fopAcIt_JudgeFunc)search_spinner_sub, this);
+        spinner = (daSpinner_c*)fopAcM_Search(search_spinner_sub, this);
         if (spinner != NULL) {
             if ((mSpinnerIn && spinner->checkSpinnerTagInto()) ||
                 spinner->checkSpinnerTagIntoIncRot())

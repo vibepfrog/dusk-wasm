@@ -154,7 +154,7 @@ int daObj_AutoMata_c::Execute() {
         mGndChk = mAcch.m_gnd;
         mGroundH = mAcch.GetGroundH();
         if (mGroundH != -G_CM3D_F_INF) {
-            if (fopAcIt_Judge((fopAcIt_JudgeFunc)srchTHouse, &current.pos) != NULL) {
+            if (fopAcIt_Judge(srchTHouse, &current.pos) != NULL) {
                 current.pos.y = mGroundH;
             }
             setEnvTevColor();
@@ -210,7 +210,8 @@ int daObj_AutoMata_c::createHeapCallBack(fopAc_ac_c* i_this) {
     return static_cast<daObj_AutoMata_c*>(i_this)->CreateHeap();
 }
 
-void* daObj_AutoMata_c::srchTHouse(fopAc_ac_c* actor, void* param_1) {
+void* daObj_AutoMata_c::srchTHouse(void* actorVoid, void* param_1) {
+    fopAc_ac_c* actor = static_cast<fopAc_ac_c*>(actorVoid);
     if (fopAcM_GetName(actor) == fpcNm_Obj_TobyHouse_e) {
         if (fopAcM_IsExecuting(fopAcM_GetID(actor))) {
             return actor;

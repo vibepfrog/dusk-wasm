@@ -70,7 +70,7 @@ public:
     int Execute();
     int Draw();
     static int createHeapCallBack(fopAc_ac_c*);
-    static void* srchTHouse(fopAc_ac_c*, void*);
+    static void* srchTHouse(void*, void*);
     int setAnm(int, bool);
     void setEnvTevColor();
     void setRoomNo();

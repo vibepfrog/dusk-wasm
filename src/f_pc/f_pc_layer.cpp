@@ -15,7 +15,8 @@ int fpcLy_ToCancelQ(layer_class* i_layer, process_method_tag_class* i_methods) {
     return fpcMtdTg_ToMethodQ(&i_layer->cancel_list, i_methods);
 }
 
-BOOL fpcLy_CancelMethod(process_method_tag_class* i_layer) {
+int fpcLy_CancelMethod(node_class* i_layerArg, void* /*unused*/) {
+    process_method_tag_class* i_layer = (process_method_tag_class*)i_layerArg;
     if (fpcMtdTg_Do(i_layer) == 1) {
         return TRUE;
     } else {
@@ -143,7 +144,7 @@ int fpcLy_Delete(layer_class* i_layer) {
 }
 
 int fpcLy_Cancel(layer_class* i_layer) {
-    return fpcMtdIt_Method(&i_layer->cancel_list, (fpcMtdIt_MethodFunc)fpcLy_CancelMethod);
+    return fpcMtdIt_Method(&i_layer->cancel_list, fpcLy_CancelMethod);
 }
 
 void fpcLy_Create(layer_class* i_layer, void* i_node, node_list_class* i_nodeList, int i_numLists) {

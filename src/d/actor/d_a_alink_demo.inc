@@ -216,14 +216,14 @@ int daAlink_c::checkDemoAction() {
                     }
                 } else if (mDemo.getParam0() == 3) {
                     if (!checkCanoeRide()) {
-                        daCanoe_c* canoe_p = (daCanoe_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchCanoe, NULL);
+                        daCanoe_c* canoe_p = (daCanoe_c*)fopAcIt_Judge(daAlink_searchCanoe, NULL);
                         canoe_p->onRodID(fopAcM_create(fpcNm_MG_ROD_e, 0xD, &mLeftHandPos, -1, NULL, NULL, -1));
                         return procCanoeJumpRideInit(NULL);
                     }
                     return 1;
                 } else if (mDemo.getParam0() == 5) {
                     if (!checkBoardRide()) {
-                        fopAc_ac_c* board_p = (fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchIceLeaf, NULL);
+                        fopAc_ac_c* board_p = (fopAc_ac_c*)fopAcIt_Judge(daAlink_searchIceLeaf, NULL);
                         if (board_p != NULL) {
                             mGndPolySpecialCode = dBgW_SPCODE_LIGHT_SNOW;
                             return procBoardWaitInit(board_p);
@@ -4295,10 +4295,11 @@ int daAlink_c::procDungeonWarpSceneStart() {
     return 1;
 }
 
-static fopAc_ac_c* daAlink_searchPortal(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchPortal(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     cXyz* pos = (cXyz*)i_data;
 
-    if (fopAcM_GetName(i_actor) == fpcNm_KYTAG04_e) {        
+    if (fopAcM_GetName(i_actor) == fpcNm_KYTAG04_e) {
         if (i_actor->current.pos.abs2XZ(*pos) < 1.0f) {
             return i_actor;
         }
@@ -4577,7 +4578,7 @@ int daAlink_c::procCoWarpInit(int param_0, int param_1) {
         }
 
         kytag04_class* kytag04_p =
-            (kytag04_class*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchPortal, &current.pos);
+            (kytag04_class*)fopAcIt_Judge(daAlink_searchPortal, &current.pos);
         if (kytag04_p != NULL) {
             mProcVar4.field_0x3010 = kytag04_p->mNeedDropNum;
         }

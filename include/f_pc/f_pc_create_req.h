@@ -32,7 +32,7 @@ typedef struct create_request {
     /* 0x44 */ layer_class* layer;
 } create_request;  // Size: 0x48
 
-BOOL fpcCtRq_isCreatingByID(create_tag* i_createTag, fpc_ProcID* i_id);
+void* fpcCtRq_isCreatingByID(void* i_createTag, void* i_id);
 BOOL fpcCtRq_IsCreatingByID(fpc_ProcID i_id);
 void fpcCtRq_CreateQTo(create_request* i_request);
 void fpcCtRq_ToCreateQ(create_request* i_request);

@@ -169,7 +169,8 @@ f32 dDbgCamSetup_c::Turbo(f32 param_0) {
     return var_f30;
 }
 
-static int search_actor(fopAc_ac_c* actor, void* data) {
+static int search_actor(void* actorVoid, void* data) {
+    fopAc_ac_c* actor = static_cast<fopAc_ac_c*>(actorVoid);
     dDbgCamSetup_c* camsetup = (dDbgCamSetup_c*)data;
 
     cXyz sp18 = dDbgCamera.Center() - actor->attention_info.position;
@@ -280,7 +281,7 @@ void dDbgCamSetup_c::listenPropertyEvent(const JORPropertyEvent* property) {
             break;
         }
         case 2:
-            fopAcIt_Executor((fopAcIt_ExecutorFunc)search_actor, this);
+            fopAcIt_Executor(search_actor, this);
             break;
         }
         break;
@@ -678,7 +679,7 @@ int dDbgCamera_c::cmdTool() {
             if (mDoCPd_c::getTrigA(mPadNo)) {
                 mCamSetup.mActorSrchRange = 10000000.0f;
                 mCamSetup.mActorID = fpcM_ERROR_PROCESS_ID_e;
-                fopAcIt_Executor((fopAcIt_ExecutorFunc)search_actor, &mCamSetup);
+                fopAcIt_Executor(search_actor, &mCamSetup);
                 
                 fopAc_ac_c* actor = Actor(mCamSetup.mActorID);
                 if (actor != NULL) {

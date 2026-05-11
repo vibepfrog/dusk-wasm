@@ -7,8 +7,9 @@
 #include "d/actor/d_a_obj_iceleaf.h"
 #include "SSystem/SComponent/c_math.h"
 
-static fopAc_ac_c* daAlink_searchIceLeaf(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchIceLeaf(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_Obj_IceLeaf_e) {
         return i_actor;

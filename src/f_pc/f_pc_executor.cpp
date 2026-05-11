@@ -36,7 +36,8 @@ int fpcEx_Execute(base_process_class* i_proc) {
     return fpcBs_Execute(i_proc);
 }
 
-int fpcEx_ToLineQ(base_process_class* i_proc) {
+int fpcEx_ToLineQ(void* arg, void* /*unused*/) {
+    base_process_class* i_proc = static_cast<base_process_class*>(arg);
     base_process_class* process = &i_proc->layer_tag.layer->process_node->base;
 
     if (i_proc->layer_tag.layer->layer_id == fpcLy_ROOT_e || cTg_IsUse(&process->line_tag_.base) == TRUE) {
@@ -54,7 +55,7 @@ int fpcEx_ToLineQ(base_process_class* i_proc) {
 
         i_proc->state.init_state = 2;
         if (fpcBs_Is_JustOfType(g_fpcNd_type, i_proc->subtype)) {
-            fpcLyIt_OnlyHere(&((process_node_class*)i_proc)->layer, (fpcLyIt_OnlyHereFunc)fpcEx_ToLineQ, i_proc);
+            fpcLyIt_OnlyHere(&((process_node_class*)i_proc)->layer, fpcEx_ToLineQ, i_proc);
         }
 
         return 1;
@@ -75,7 +76,7 @@ int fpcEx_ExecuteQTo(base_process_class* i_proc) {
 int fpcEx_ToExecuteQ(base_process_class* i_proc) {
     process_priority_class* priority = &i_proc->priority;
     if (fpcLyTg_ToQueue(&i_proc->layer_tag, priority->current_info.layer_id, priority->current_info.list_id, priority->current_info.list_priority) == 1) {
-        fpcEx_ToLineQ(i_proc);
+        fpcEx_ToLineQ(i_proc, nullptr);
         return 1;
     }
     

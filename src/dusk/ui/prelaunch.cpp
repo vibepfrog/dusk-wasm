@@ -82,21 +82,33 @@ struct DiscVerificationResult {
 };
 
 struct DiscVerificationTask {
+    // Run worker body — extracted so we can call it inline under emscripten
+    // (where std::thread constructor aborts without -pthread).
+    void runVerification() {
+        try {
+            validation = iso::validate(path.c_str(), status, info);
+        } catch (const std::exception& e) {
+            PrelaunchLog.error(
+                "Disc verification failed with exception for '{}': {}", path, e.what());
+            validation = iso::ValidationError::Unknown;
+        } catch (...) {
+            PrelaunchLog.error(
+                "Disc verification failed with unknown exception for '{}'", path);
+            validation = iso::ValidationError::Unknown;
+        }
+        done.store(true, std::memory_order_release);
+    }
+
     explicit DiscVerificationTask(std::string discPath) : path(std::move(discPath)) {
-        worker = std::thread([this] {
-            try {
-                validation = iso::validate(path.c_str(), status, info);
-            } catch (const std::exception& e) {
-                PrelaunchLog.error(
-                    "Disc verification failed with exception for '{}': {}", path, e.what());
-                validation = iso::ValidationError::Unknown;
-            } catch (...) {
-                PrelaunchLog.error(
-                    "Disc verification failed with unknown exception for '{}'", path);
-                validation = iso::ValidationError::Unknown;
-            }
-            done.store(true, std::memory_order_release);
-        });
+#ifdef __EMSCRIPTEN__
+        // emcc built without -pthread aborts on std::thread construction. Run
+        // synchronously instead — the SHA-1 over a 1054 MB CISO blocks the UI
+        // for ~1.5s on this hardware (verified in iso_bridge.test.mjs), which
+        // is acceptable given we're already past the file-picker phase.
+        runVerification();
+#else
+        worker = std::thread([this] { runVerification(); });
+#endif
     }
 
     ~DiscVerificationTask() {
@@ -124,23 +136,31 @@ std::unique_ptr<DiscVerificationTask> sDiscVerificationTask;
 bool sDiscVerificationModalPushed = false;
 
 struct UpdateCheckTask {
+    void runCheck() {
+        try {
+            result = update_check::check_latest_github_release("TwilitRealm", "dusk");
+        } catch (const std::exception& e) {
+            result = {
+                .status = update_check::Status::Failed,
+                .message = fmt::format("Update check failed with exception: {}", e.what()),
+            };
+        } catch (...) {
+            result = {
+                .status = update_check::Status::Failed,
+                .message = "Update check failed with an unknown exception",
+            };
+        }
+        done.store(true, std::memory_order_release);
+    }
+
     UpdateCheckTask() {
-        worker = std::thread([this] {
-            try {
-                result = update_check::check_latest_github_release("TwilitRealm", "dusk");
-            } catch (const std::exception& e) {
-                result = {
-                    .status = update_check::Status::Failed,
-                    .message = fmt::format("Update check failed with exception: {}", e.what()),
-                };
-            } catch (...) {
-                result = {
-                    .status = update_check::Status::Failed,
-                    .message = "Update check failed with an unknown exception",
-                };
-            }
-            done.store(true, std::memory_order_release);
-        });
+#ifdef __EMSCRIPTEN__
+        // Update checker uses HTTP backend = no_backend in the web preset, so
+        // this returns failure immediately without doing real I/O. Run inline.
+        runCheck();
+#else
+        worker = std::thread([this] { runCheck(); });
+#endif
     }
 
     ~UpdateCheckTask() { join(); }

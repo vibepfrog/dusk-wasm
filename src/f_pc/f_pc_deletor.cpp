@@ -39,7 +39,7 @@ void fpcDt_Handler() {
         g_fpcDbSv_service[6](&g_fpcDtTg_Queue.mSize);
     }
 #endif
-    cLsIt_Method(&g_fpcDtTg_Queue, (cNdIt_MethodFunc)fpcDtTg_Do, (void*)fpcDt_deleteMethod);
+    cLsIt_Method(&g_fpcDtTg_Queue, fpcDtTg_Do, NULL);
 }
 
 int fpcDt_ToQueue(base_process_class* i_proc) {
@@ -60,7 +60,8 @@ int fpcDt_ToQueue(base_process_class* i_proc) {
     return 0;
 }
 
-int fpcDt_ToDeleteQ(base_process_class* i_proc) {
+int fpcDt_ToDeleteQ(void* arg, void* /*unused*/) {
+    base_process_class* i_proc = static_cast<base_process_class*>(arg);
     if (i_proc->unk_0xA == 1) {
         return 0;
     }
@@ -75,12 +76,12 @@ int fpcDt_ToDeleteQ(base_process_class* i_proc) {
         }
 
         layer_class* layer = &((process_node_class*)i_proc)->layer;
-        
+
         if (fpcLy_Cancel(layer) == 0) {
             JUT_ASSERT(196, FALSE);
         }
 
-        if (fpcLyIt_OnlyHereLY(layer, (fpcLyIt_OnlyHereFunc)fpcDt_ToDeleteQ, NULL) == 0)
+        if (fpcLyIt_OnlyHereLY(layer, fpcDt_ToDeleteQ, NULL) == 0)
         {
             return 0;
         }
@@ -121,7 +122,7 @@ int fpcDt_Delete(void* i_proc) {
         if (((base_process_class*)i_proc)->state.init_state == 3)
             return 0;
 
-        int ret = fpcDt_ToDeleteQ((base_process_class*)i_proc);
+        int ret = fpcDt_ToDeleteQ(i_proc, nullptr);
 #if DEBUG
         if (ret == 0) {
             if (g_fpcDbSv_service[5] != NULL) {

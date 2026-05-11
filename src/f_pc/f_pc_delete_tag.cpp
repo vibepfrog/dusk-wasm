@@ -5,7 +5,13 @@
 
 #include "SSystem/SComponent/c_list.h"
 #include "f_pc/f_pc_delete_tag.h"
+#include "f_pc/f_pc_deletor.h"
 #include "f_pc/f_pc_debug_sv.h"
+
+// Forward decl from f_pc_deletor.cpp — this is the only delete-method callback
+// in the codebase, called directly here to avoid a function-pointer-through-void*
+// roundtrip that wasm CFI cannot validate.
+extern int fpcDt_deleteMethod(base_process_class* i_proc);
 
 node_list_class g_fpcDtTg_Queue = {NULL, NULL, 0};
 
@@ -26,11 +32,12 @@ void fpcDtTg_DeleteQTo(delete_tag_class* i_deleteTag) {
     cTg_SingleCut(&i_deleteTag->base);
 }
 
-int fpcDtTg_Do(delete_tag_class* i_deleteTag, delete_tag_func i_func) {
+int fpcDtTg_Do(node_class* i_deleteTagArg, void* /*unused*/) {
+    delete_tag_class* i_deleteTag = (delete_tag_class*)i_deleteTagArg;
     if (i_deleteTag->timer <= 0) {
         fpcDtTg_DeleteQTo(i_deleteTag);
 
-        if (i_func(i_deleteTag->base.mpTagData) == 0) {
+        if (fpcDt_deleteMethod((base_process_class*)i_deleteTag->base.mpTagData) == 0) {
             fpcDtTg_ToDeleteQ(i_deleteTag);
 #if DEBUG
             if (i_deleteTag->unk_0x1c-- <= 0) {

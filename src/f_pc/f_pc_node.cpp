@@ -29,7 +29,7 @@ int fpcNd_Draw(process_node_class* i_procNode) {
         if (!i_procNode->draw_interp_frame && !dusk::frame_interp::is_sim_frame()) {
             for (create_tag_class* i = fopDwIt_Begin(); i != NULL; i = fopDwIt_Next(i)) {
                 void* process = i->mpTagData;
-                fpcM_Draw(process);
+                fpcM_Draw(process, nullptr);
             }
         } else
 #endif
@@ -63,14 +63,14 @@ int fpcNd_Execute(process_node_class* i_procNode) {
 
 int g_fpcNd_type;
 
-void* fpcNd_IsCreatingFromUnder(void* i_procNode) {
+void* fpcNd_IsCreatingFromUnder(void* i_procNode, void* /*unused*/) {
     if (i_procNode != NULL && fpcBs_Is_JustOfType(g_fpcNd_type, ((process_node_class*)i_procNode)->base.subtype) != FALSE)
     {
         layer_class* layer;
         layer = &((process_node_class*)i_procNode)->layer;
         if (fpcLy_IsCreatingMesg(layer) == FALSE) {
             return (process_node_class*)fpcLyIt_Judge(
-                layer, (fpcLyIt_JudgeFunc)fpcNd_IsCreatingFromUnder, NULL);
+                layer, fpcNd_IsCreatingFromUnder, NULL);
         } else {
             return i_procNode;
         }
@@ -82,7 +82,7 @@ void* fpcNd_IsCreatingFromUnder(void* i_procNode) {
 BOOL g_fpcNd_IsCheckOfDeleteTiming = TRUE;
 
 int fpcNd_IsDeleteTiming(process_node_class* i_procNode) {
-    if (g_fpcNd_IsCheckOfDeleteTiming == TRUE && fpcNd_IsCreatingFromUnder(i_procNode) != NULL) {
+    if (g_fpcNd_IsCheckOfDeleteTiming == TRUE && fpcNd_IsCreatingFromUnder(i_procNode, nullptr) != NULL) {
         return 0;
     }
     

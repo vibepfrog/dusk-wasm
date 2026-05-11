@@ -60,7 +60,7 @@ static int daAlink_Create(fopAc_ac_c* i_this);
 static int daAlink_Delete(daAlink_c* i_this);
 static int daAlink_Execute(daAlink_c* i_this);
 static int daAlink_Draw(daAlink_c* i_this);
-static fopAc_ac_c* daAlink_searchTagKandelaar(fopAc_ac_c* i_actor, void* i_data);
+static void* daAlink_searchTagKandelaar(void* i_actor, void* i_data);
 
 BOOL daAlink_c::getE3Zhint() {
     return false;
@@ -5006,12 +5006,12 @@ int daAlink_c::create() {
 
     if (mLinkAcch.GetGroundH() == -G_CM3D_F_INF
         || (startMode == 14 && !dComIfG_Bgsp().ChkMoveBG(mLinkAcch.m_gnd))
-        || (startPoint == -4 && !(portalActor = fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchPortal, &current.pos)))
+        || (startPoint == -4 && !(portalActor = fopAcIt_Judge(daAlink_searchPortal, &current.pos)))
         || (mRideActorID != fpcM_ERROR_PROCESS_ID_e && !fopAcM_SearchByID(mRideActorID))
-        || (checkCanoeStart() && !fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchCanoe, NULL))
-        || (checkBoarStart() && !fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchBoar, NULL))
+        || (checkCanoeStart() && !fopAcIt_Judge(daAlink_searchCanoe, NULL))
+        || (checkBoarStart() && !fopAcIt_Judge(daAlink_searchBoar, NULL))
         || (startMode == 13 && (!mLinkAcch.ChkWaterHit() || mLinkAcch.m_wtr.GetHeight() < current.pos.y))
-        || ((checkCarryStartLightBallA() || checkCarryStartLightBallB()) && !fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchLightBall, NULL))
+        || ((checkCarryStartLightBallA() || checkCarryStartLightBallB()) && !fopAcIt_Judge(daAlink_searchLightBall, NULL))
         || (isHorseStart && dComIfGp_getHorseActor() == NULL)
         )
     {
@@ -5087,7 +5087,7 @@ int daAlink_c::create() {
     }
 
     if (checkCarryStartLightBallA() || checkCarryStartLightBallB()) {
-        setForceGrab((fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchLightBall, NULL),
+        setForceGrab((fopAc_ac_c*)fopAcIt_Judge(daAlink_searchLightBall, NULL),
                      1, 1);
     }
 
@@ -11077,7 +11077,7 @@ BOOL daAlink_c::checkFrontWallTypeAction() {
             if (field_0x2f91 == 5) {
                 daTag_Lantern_c* tag = NULL;
                 if (fopAcM_GetRoomNo(this) == 4 && checkStageName("R_SP01")) {
-                    tag = (daTag_Lantern_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchTagKandelaar, NULL);
+                    tag = (daTag_Lantern_c*)fopAcIt_Judge(daAlink_searchTagKandelaar, NULL);
                 }
 
                 if (tag == NULL || tag->chkClimbDownLadderStatus()) {
@@ -11475,8 +11475,9 @@ int daAlink_c::orderTalk(int i_checkZTalk) {
     return 0;
 }
 
-static void* daAlink_searchBouDoor(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchBouDoor(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_NPC_BOU_e && ((daNpc_Bou_c*)i_actor)->speakTo()) {
         return i_actor;
@@ -11485,8 +11486,9 @@ static void* daAlink_searchBouDoor(fopAc_ac_c* i_actor, void* i_data) {
     return NULL;
 }
 
-static void* daAlink_searchKolin(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchKolin(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if (fopAcM_GetName(i_actor) == fpcNm_NPC_KOLIN_e && ((daNpc_Kolin_c*)i_actor)->orderNoRideEvt()) {
         return i_actor;
@@ -11607,7 +11609,7 @@ int daAlink_c::checkNormalAction() {
             }
 
             if (checkStageName("F_SP103") &&
-                fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchKolin, NULL))
+                fopAcIt_Judge(daAlink_searchKolin, NULL))
             {
                 return procWaitInit();
             } else {
@@ -11630,7 +11632,7 @@ int daAlink_c::checkNormalAction() {
         if (dComIfGp_getDoStatus() == BUTTON_STATUS_OPEN) {
             if (mAttList->mType == fopAc_attn_DOOR_e) {
                 if (!checkStageName("F_SP103") ||
-                    !fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchBouDoor, NULL))
+                    !fopAcIt_Judge(daAlink_searchBouDoor, NULL))
                 {
                     fopAcM_orderDoorEvent(this, field_0x27f4, 0, 0);
                 }
@@ -13593,7 +13595,7 @@ int daAlink_c::startRestartRoom(u32 i_mode, int param_1, int i_dmgAmount, BOOL i
 
 BOOL daAlink_c::checkCoachGuardGame() {
     return !checkBoarSingleBattle() &&
-           fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchCoach, NULL);
+           fopAcIt_Judge(daAlink_searchCoach, NULL);
 }
 
 void daAlink_c::checkRoofRestart() {

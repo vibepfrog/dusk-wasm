@@ -32,7 +32,11 @@ namespace {
 
 bool RestartProcess(int argc, char* argv[]) {
 #if defined(__ANDROID__) || (defined(TARGET_OS_IOS) && TARGET_OS_IOS) ||                           \
-    (defined(TARGET_OS_TV) && TARGET_OS_TV)
+    (defined(TARGET_OS_TV) && TARGET_OS_TV) || defined(__EMSCRIPTEN__)
+    // Emscripten: there is no process to restart — the wasm module owns the page.
+    // A real "restart" would mean reloading the host page, which discards MEMFS
+    // and forces an FS.syncfs(true, ...) round-trip. Just refuse and let the
+    // caller continue normally.
     (void)argc;
     (void)argv;
     return false;

@@ -1132,7 +1132,8 @@ static int daArrow_draw(daArrow_c* i_this) {
     return i_this->draw();
 }
 
-static void* daAlink_searchHorseZelda(fopAc_ac_c* param_0, void* param_1) {
+static void* daAlink_searchHorseZelda(void* param_0Void, void* param_1) {
+    fopAc_ac_c* param_0 = static_cast<fopAc_ac_c*>(param_0Void);
     if (fopAcM_GetName(param_0) == fpcNm_HOZELDA_e) {
         return param_0;
     }
@@ -1151,7 +1152,7 @@ cPhs_Step daArrow_c::create() {
     }
     
     if (mArrowType == 2) {
-        field_0xa08.setData(fopAcM_Search((fopAcIt_JudgeFunc)daAlink_searchHorseZelda, NULL));
+        field_0xa08.setData(fopAcM_Search(daAlink_searchHorseZelda, NULL));
         field_0x946 = 6;
         field_0x94c = 0x896e;
     } else if (mArrowType == 0) {

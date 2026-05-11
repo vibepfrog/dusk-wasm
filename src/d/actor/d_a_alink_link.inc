@@ -215,7 +215,8 @@ void daAlink_c::searchPeepObj(fopAc_ac_c* i_actor, void* i_data) {
     }
 }
 
-static int daAlink_searchPeepObj(fopAc_ac_c* i_actor, void* i_data) {
+static int daAlink_searchPeepObj(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     daAlink_getAlinkActorClass()->searchPeepObj(i_actor, i_data);
     return 0;
 }
@@ -334,7 +335,7 @@ int daAlink_c::procCoPeepSubjectivityInit() {
 int daAlink_c::procCoPeepSubjectivity() {
     if (doTrigger() || peepSubjectCancelTrigger()) {
         kytag05_class* peep = NULL;
-        fopAcIt_Executor((fopAcIt_ExecutorFunc)daAlink_searchPeepObj, &peep);
+        fopAcIt_Executor(daAlink_searchPeepObj, &peep);
 
         if (peep != NULL) {
             mPeepExitID = peep->getSceneListID();

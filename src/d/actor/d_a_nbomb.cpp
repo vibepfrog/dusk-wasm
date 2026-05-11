@@ -95,7 +95,8 @@ int daNbomb_c::searchEnemy(fopAc_ac_c* i_enemy) {
     return 0;
 }
 
-static void* daNbomb_searchEnemy(fopAc_ac_c* i_actor, void* i_data) {
+static void* daNbomb_searchEnemy(void* i_actorVoid, void* i_data) {
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     if (fopAcM_GetGroup(i_actor) == fopAc_ENEMY_e &&
         ((daNbomb_c*)i_data)->searchEnemy(i_actor) != 0)
     {
@@ -1226,7 +1227,7 @@ BOOL daNbomb_c::procInsectMove() {
     }
 
     if (!checkStateFlg0(FLG0_FROZEN)) {
-        if (fopAcIt_Judge((fopAcIt_JudgeFunc)daNbomb_searchEnemy, this)) {
+        if (fopAcIt_Judge(daNbomb_searchEnemy, this)) {
             f32 var_f30 = field_0xbfc.inprod(field_0xc14);
 
             if (!(fabsf(var_f30) > 0.999f)) {

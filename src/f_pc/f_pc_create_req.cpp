@@ -15,17 +15,19 @@
 #include <cstdio>
 #include "dusk/logging.h"
 
-BOOL fpcCtRq_isCreatingByID(create_tag* i_createTag, fpc_ProcID* i_id) {
+void* fpcCtRq_isCreatingByID(void* i_createTagArg, void* i_idArg) {
+    create_tag* i_createTag = static_cast<create_tag*>(i_createTagArg);
+    fpc_ProcID* i_id = static_cast<fpc_ProcID*>(i_idArg);
     fpc_ProcID id = ((create_request*)i_createTag->base.mpTagData)->id;
     if (id == *i_id) {
-        return TRUE;
+        return i_createTag;
     } else {
-        return FALSE;
+        return NULL;
     }
 }
 
 BOOL fpcCtRq_IsCreatingByID(fpc_ProcID i_id) {
-    if (fpcCtIt_Judge((fpcLyIt_JudgeFunc)fpcCtRq_isCreatingByID, &i_id) != NULL) {
+    if (fpcCtIt_Judge(fpcCtRq_isCreatingByID, &i_id) != NULL) {
         return TRUE;
     } else {
         return FALSE;
@@ -81,7 +83,8 @@ BOOL fpcCtRq_IsDoing(create_request* i_request) {
         return FALSE;
 }
 
-BOOL fpcCtRq_Do(create_request* i_request) {
+int fpcCtRq_Do(void* arg, void* /*unused*/) {
+    create_request* i_request = static_cast<create_request*>(arg);
     int phase = cPhs_COMPLEATE_e;
 
     if (i_request->methods != NULL) {
@@ -126,7 +129,7 @@ int fpcCtRq_Handler() {
         g_fpcDbSv_service[3](&g_fpcCtTg_Queue.mSize);
     }
 #endif
-    return fpcCtIt_Method((fpcCtIt_MethodFunc)fpcCtRq_Do, NULL);
+    return fpcCtIt_Method(fpcCtRq_Do, NULL);
 }
 
 create_request* fpcCtRq_Create(layer_class* i_layer, u32 i_size, create_request_method_class* i_methods) {

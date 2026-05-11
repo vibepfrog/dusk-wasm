@@ -494,17 +494,20 @@ void dEvent_manager_c::remove() {
 #endif
 }
 
-static void* extraOnObjectCallBack(fopAc_ac_c* actor, void* data) {
+static void* extraOnObjectCallBack(void* actorVoid, void* data) {
+    fopAc_ac_c* actor = static_cast<fopAc_ac_c*>(actorVoid);
     fopAcM_OnStatus(actor, fopAcStts_STAFF_EXTRA_e);
     return NULL;
 }
 
-static void* extraOffObjectCallBack(fopAc_ac_c* actor, void* data) {
+static void* extraOffObjectCallBack(void* actorVoid, void* data) {
+    fopAc_ac_c* actor = static_cast<fopAc_ac_c*>(actorVoid);
     fopAcM_OffStatus(actor, fopAcStts_STAFF_EXTRA_e);
     return NULL;
 }
 
-static void* allOffObjectCallBack(fopAc_ac_c* actor, void* data) {
+static void* allOffObjectCallBack(void* actorVoid, void* data) {
+    fopAc_ac_c* actor = static_cast<fopAc_ac_c*>(actorVoid);
     fopAc_ac_c* spC = (fopAc_ac_c*)data;
 
     fopAcM_OffStatus(actor, fopAcStts_STAFF_PRIMARY_e | fopAcStts_STAFF_SHUTTER_e);
@@ -612,7 +615,7 @@ void dEvent_manager_c::endProc(s16 evId, BOOL isClose) {
     }
 
     const char* param = "ALL";
-    fopAcM_Search((fopAcIt_JudgeFunc)allOffObjectCallBack, (void*)param);
+    fopAcM_Search(allOffObjectCallBack, (void*)param);
     mCameraPlay = 2;
     event->mEventState = 0;
     mCurrentEvType = 0;
@@ -1307,7 +1310,7 @@ int dEvent_manager_c::getEventPrio(fopAc_ac_c* actor, s16 evCompositId) {
 
 void dEvent_manager_c::issueStaff(const char* staffname) {
     if (strcmp(staffname, "ALL") == 0) {
-        fopAcM_Search((fopAcIt_JudgeFunc)extraOnObjectCallBack, NULL);
+        fopAcM_Search(extraOnObjectCallBack, NULL);
     } else {
         char nameBuf[32];
         strcpy(nameBuf, staffname);
@@ -1318,7 +1321,7 @@ void dEvent_manager_c::issueStaff(const char* staffname) {
 
 void dEvent_manager_c::cancelStaff(const char* staffname) {
     if (!strcmp(staffname, "ALL")) {
-        fopAcM_Search((fopAcIt_JudgeFunc)extraOffObjectCallBack, NULL);
+        fopAcM_Search(extraOffObjectCallBack, NULL);
     } else {
         char nameBuf[32];
         strcpy(nameBuf, staffname);
@@ -1363,7 +1366,8 @@ struct FindShtrCbPrms {
     fopAc_ac_c* actor;
 };
 
-static fopAc_ac_c* findShutterCallBack(fopAc_ac_c* actor, void* data) {
+static void* findShutterCallBack(void* actorVoid, void* data) {
+    fopAc_ac_c* actor = static_cast<fopAc_ac_c*>(actorVoid);
     FindShtrCbPrms* prms = (FindShtrCbPrms*)data;
     cXyz diff;
 
@@ -1390,7 +1394,7 @@ fopAc_ac_c* dEvent_manager_c::specialCast_Shutter(s16 actorName, BOOL param_1) {
         JUT_ASSERT(2238, FALSE);
     }
 
-    shutterActor = fopAcM_Search((fopAcIt_JudgeFunc)findShutterCallBack, &prms);
+    shutterActor = fopAcM_Search(findShutterCallBack, &prms);
     if (shutterActor != NULL && param_1) {
         cXyz goal(shutterActor->home.pos);
         s16 angle = prms.actor->home.angle.y;

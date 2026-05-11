@@ -46,15 +46,15 @@ s16 dMsgObject_getGroupID() {
     return s_groupID;
 }
 
-static int dMsgObject_searchSSItem(void* param_1, void* param_2) {
+static void* dMsgObject_searchSSItem(void* param_1, void* param_2) {
     daPy_py_c* player = daPy_getPlayerActorClass();
     if (fopAcM_IsActor(param_1) && fopAcM_GetName(param_1) == fpcNm_OBJ_SSITEM_e) {
         if (static_cast<daObj_SSBase_c*>(param_1)->getProcessID() == player->getGrabActorID()) {
             static_cast<daObj_SSBase_c*>(param_1)->setSoldOut();
-            return 0;
+            return NULL;
         }
     }
-    return 0;
+    return NULL;
 }
 
 dMsgObject_HowlHIO_c::dMsgObject_HowlHIO_c() {
@@ -1187,7 +1187,7 @@ void dMsgObject_c::inputProc() {
                 }
             } else {
                 dMsgObject_addTotalPayment(getInputValue());
-                fpcM_Search((fpcLyIt_JudgeFunc)dMsgObject_searchSSItem, this);
+                fpcM_Search(dMsgObject_searchSSItem, this);
             }
             dMeter2Info_offShopTalkFlag();
             setStatusLocal(14);

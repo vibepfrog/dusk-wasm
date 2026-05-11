@@ -122,7 +122,7 @@ static bool setArchiveBank(int i_roomNo) {
     return true;
 }
 
-static int objectDeleteJugge(void* i_process, void* i_data) {
+static void* objectDeleteJugge(void* i_process, void* i_data) {
     if (fpcM_GetProfName(i_process) != fpcNm_BG_e) {
         if (fopAcM_IsActor(i_process)) {
             #if DEBUG
@@ -131,7 +131,7 @@ static int objectDeleteJugge(void* i_process, void* i_data) {
             #endif
 
             if (!fopAcM_CheckCondition((fopAc_ac_c*)i_process, fopAcCnd_NODRAW_e)) {
-                return 0;
+                return NULL;
             }
 
             OS_REPORT("削除！<%s>\n", namebuf);
@@ -140,15 +140,17 @@ static int objectDeleteJugge(void* i_process, void* i_data) {
         fpcM_Delete(i_process);
     }
 
-    return 0;
+    return NULL;
 }
 
-static int deleteJugge(void* i_process, void* i_data) {
+static void* deleteJugge(void* i_process, void* i_data) {
     fpcM_Delete(i_process);
-    return 0;
+    return NULL;
 }
 
-static void* isCreatingCallback(create_tag* i_createTag, fpc_ProcID* i_procId) {
+static void* isCreatingCallback(void* i_createTagArg, void* i_procIdArg) {
+    create_tag* i_createTag = static_cast<create_tag*>(i_createTagArg);
+    fpc_ProcID* i_procId = static_cast<fpc_ProcID*>(i_procIdArg);
     create_request* create_req = (create_request*)i_createTag->base.mpTagData;
     if (create_req->layer->layer_id == *i_procId) {
         return create_req;
@@ -158,7 +160,7 @@ static void* isCreatingCallback(create_tag* i_createTag, fpc_ProcID* i_procId) {
 }
 
 static u8 isCreating(fpc_ProcID i_id) {
-    if (fpcCtIt_Judge((fpcCtIt_JudgeFunc)isCreatingCallback, &i_id)) {
+    if (fpcCtIt_Judge(isCreatingCallback, &i_id)) {
         return TRUE;
     }
 
@@ -246,7 +248,7 @@ static bool objectSetCheck(room_of_scene_class* i_this) {
             return 0;
         }
 
-        fpcM_LyJudge(&i_this->base, (fpcLyIt_JudgeFunc)deleteJugge, NULL);
+        fpcM_LyJudge(&i_this->base, deleteJugge, NULL);
         g_dComIfG_gameInfo.play.getParticle()->levelAllForceOnEventMove();
 
         // "Object deleted! <%d>"
@@ -257,7 +259,7 @@ static bool objectSetCheck(room_of_scene_class* i_this) {
         dComIfGp_roomControl_offStatusFlag(roomNo, 0x20);
         i_this->field_0x1d4 = 0;
     } else if (status_flag_20) {
-        fpcM_LyJudge(&i_this->base, (fpcLyIt_JudgeFunc)objectDeleteJugge, NULL);
+        fpcM_LyJudge(&i_this->base, objectDeleteJugge, NULL);
         g_dComIfG_gameInfo.play.getParticle()->levelAllForceOnEventMove();
     }
 

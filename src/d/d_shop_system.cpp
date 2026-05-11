@@ -34,7 +34,7 @@ static int dShopSystem_item_count;
 
 static u8 data_80451060;
 
-static int dShopSystem_searchItemActor(void* i_actor, void* param_1) {
+static void* dShopSystem_searchItemActor(void* i_actor, void* param_1) {
     if (fopAcM_IsActor(i_actor) && fopAcM_GetName(i_actor) == fpcNm_TAG_SHOPITM_e) {
         if ((fopAcM_GetParam(param_1) & 0xF0000000) == (fopAcM_GetParam(i_actor) & 0xF0000000) &&
             dShopSystem_item_count < dShopSystem_sellItemMax)
@@ -81,7 +81,7 @@ static fopAc_ac_c* dShopSystem_cameraActor[2] = {NULL, NULL};
 
 static int dShopSystem_camera_count;
 
-static int dShopSystem_searchCameraActor(void* i_actor, void* param_1) {
+static void* dShopSystem_searchCameraActor(void* i_actor, void* param_1) {
     if (fopAcM_IsActor(i_actor) && fopAcM_GetName(i_actor) == fpcNm_TAG_SHOPCAM_e) {
         if ((fopAcM_GetParam(param_1) & 0xf0000000) == (fopAcM_GetParam(i_actor) & 0xf0000000) &&
             dShopSystem_camera_count < 2)
@@ -1405,10 +1405,10 @@ bool dShopSystem_c::searchItemActor() {
           dShopSystem_camera_count < 2)))
     {
         if (dShopSystem_item_count < temp_data) {
-            fpcEx_Search((fpcLyIt_JudgeFunc)dShopSystem_searchItemActor, this);
+            fpcEx_Search(dShopSystem_searchItemActor, this);
         }
         if (dShopSystem_camera_count < 2) {
-            fpcEx_Search((fpcLyIt_JudgeFunc)dShopSystem_searchCameraActor, this);
+            fpcEx_Search(dShopSystem_searchCameraActor, this);
         }
         return 0;
     }

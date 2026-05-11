@@ -13,10 +13,10 @@ extern int mDoGph_Painter();
 extern int mDoGph_Create();
 
 cAPI_Interface g_cAPI_Interface = {
-    (cAPIGph_Mthd)mDoGph_Create,
-    (cAPIGph_Mthd)mDoGph_BeforeOfDraw,
-    (cAPIGph_Mthd)mDoGph_AfterOfDraw,
-    (cAPIGph_Mthd)mDoGph_Painter,
+    mDoGph_Create,
+    mDoGph_BeforeOfDraw,
+    mDoGph_AfterOfDraw,
+    mDoGph_Painter,
     mDoGph_BlankingON,
     mDoGph_BlankingOFF,
 };

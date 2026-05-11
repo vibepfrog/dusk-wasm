@@ -1,0 +1,87 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    # wasm-port is the active porting branch; rename to web-release once the
+    # port stabilises if we want to match slider's deploy-branch convention.
+    branches: [wasm-port, web-release]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Don't cancel in-flight deploys — Pages doesn't tolerate two deploy jobs
+# racing for the same environment, and aborting a build mid-link wastes
+# the emsdk cache warmup.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # dtolnay/rust-toolchain is the smallest action that gives us rustup
+      # plus a stable toolchain; Corrosion drives the actual cross-compile
+      # via Rust_CARGO_TARGET=wasm32-unknown-emscripten in the preset.
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Rust_RUSTUP_INSTALL_MISSING_TARGET=ON in the preset would pull this
+      # in on first build, but pre-installing keeps the configure log clean
+      # and surfaces network failures here instead of mid-build.
+      - name: Add wasm32-unknown-emscripten Rust target
+        run: rustup target add wasm32-unknown-emscripten
+
+      # Pinned to the version recorded in tools/emsdk-version. The cache
+      # folder lets setup-emsdk reuse the toolchain across runs instead of
+      # re-downloading ~400 MB every time.
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 5.0.6
+          actions-cache-folder: emsdk-cache
+
+      # The web-emscripten preset declares source/binary dirs and cache
+      # variables — don't pass -S/-B here or we'll fight the preset.
+      - name: Configure
+        run: emcmake cmake --preset web-emscripten
+
+      - name: Build
+        run: cmake --build --preset web-emscripten
+
+      # Sanity-check the four artifacts the loader expects before we ship
+      # anything to Pages; a missing .data or .wasm would still "deploy"
+      # but break at runtime with an opaque fetch error.
+      - name: Verify build output
+        run: |
+          set -e
+          for f in index.html index.js index.wasm index.data; do
+            if [ ! -f "build/web-emscripten/web/$f" ]; then
+              echo "::error::Missing expected build output: build/web-emscripten/web/$f"
+              exit 1
+            fi
+          done
+          ls -lh build/web-emscripten/web/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web-emscripten/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

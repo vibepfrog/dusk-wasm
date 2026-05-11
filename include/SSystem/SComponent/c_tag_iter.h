@@ -15,7 +15,7 @@ typedef struct judge_filter {
     void* mpUserData;
 } judge_filter;
 
-int cTgIt_MethodCall(create_tag_class* pTag, method_filter* pMethodFilter);
-void* cTgIt_JudgeFilter(create_tag_class* pTag, judge_filter* pJudgeFilter);
+int cTgIt_MethodCall(node_class* pTag, void* pMethodFilter);
+void* cTgIt_JudgeFilter(node_class* pTag, void* pJudgeFilter);
 
 #endif /* C_TAG_ITER_H */

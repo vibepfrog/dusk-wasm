@@ -191,8 +191,8 @@ void daPoFire_c::modeInitMove() {
     f32 calc_res = cLib_addCalc(&current.pos.y, mGroundY + 70.0f, 0.5f, 2.0f, 0.5f);
     if (calc_res == 0.0f) {
         unk5D4 = current.pos.y;
-        mpPoCandle = (daPoCandle_c*)fopAcM_Search((fopAcIt_JudgeFunc)searchCandle, this);
-        mpTagPoFire = (daTagPoFire_c*)fopAcM_Search((fopAcIt_JudgeFunc)searchFireTag, this);
+        mpPoCandle = (daPoCandle_c*)fopAcM_Search(searchCandle, this);
+        mpTagPoFire = (daTagPoFire_c*)fopAcM_Search(searchFireTag, this);
         if (mpPoCandle == NULL && mpTagPoFire == NULL) {
             init_modeMoveOut();
             return;

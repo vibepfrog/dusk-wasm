@@ -29,7 +29,7 @@ typedef struct node_process_profile_definition {
 int fpcNd_DrawMethod(nodedraw_method_class* pNodeMethod, void* pData);
 int fpcNd_Draw(process_node_class* pProcNode);
 int fpcNd_Execute(process_node_class* pProcNode);
-void* fpcNd_IsCreatingFromUnder(void* pProcNode);
+void* fpcNd_IsCreatingFromUnder(void* pProcNode, void* /*unused*/);
 int fpcNd_IsDeleteTiming(process_node_class* pProcNode);
 int fpcNd_IsDelete(process_node_class* pProcNode);
 int fpcNd_Delete(process_node_class* pProcNode);

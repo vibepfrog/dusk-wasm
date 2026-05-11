@@ -4,8 +4,8 @@
 #include <types.h>
 
 int fpcPause_IsEnable(void* pProc, u8 expected);
-int fpcPause_Enable(void* pProc, u8 pauseMask);
-int fpcPause_Disable(void* pProc, u8 pauseMask);
+int fpcPause_Enable(void* pProc, void* /*pauseMask as void* */);
+int fpcPause_Disable(void* pProc, void* /*pauseMask as void* */);
 void fpcPause_Init(void* pProc);
 
 #endif

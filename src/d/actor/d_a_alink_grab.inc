@@ -32,8 +32,9 @@ static bool daAlink_checkLightBallB(fopAc_ac_c* i_actor) {
     return false;
 }
 
-static fopAc_ac_c* daAlink_searchLightBall(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchLightBall(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
 
     if ((daPy_py_c::checkCarryStartLightBallA() && daAlink_checkLightBallA(i_actor)) ||
         (daPy_py_c::checkCarryStartLightBallB() && daAlink_checkLightBallB(i_actor)))
@@ -1966,8 +1967,9 @@ int daAlink_c::procPullMove() {
     return 1;
 }
 
-static fopAc_ac_c* daAlink_searchGoat(fopAc_ac_c* i_actor, void* i_data) {
+static void* daAlink_searchGoat(void* i_actorVoid, void* i_data) {
     UNUSED(i_data);
+    fopAc_ac_c* i_actor = static_cast<fopAc_ac_c*>(i_actorVoid);
     if (fopAcM_GetName(i_actor) == fpcNm_COW_e) {
         return i_actor;
     }
@@ -2034,7 +2036,7 @@ int daAlink_c::procGoatMoveInit() {
     setSingleAnimeBase(ANM_ATN_COW);
     mProcVar2.field_0x300c = 0;
 
-    fopAc_ac_c* goat_p = (fopAc_ac_c*)fopAcIt_Judge((fopAcIt_JudgeFunc)daAlink_searchGoat, NULL);
+    fopAc_ac_c* goat_p = (fopAc_ac_c*)fopAcIt_Judge(daAlink_searchGoat, NULL);
     if (goat_p != NULL) {
         field_0x280c.setData(goat_p);
     }

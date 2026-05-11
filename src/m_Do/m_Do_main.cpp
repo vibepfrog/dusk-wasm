@@ -7,6 +7,9 @@
 #include "m_Do/m_Do_main.h"
 #include <dolphin/vi.h>
 #include <cstring>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include "DynamicLink.h"
 #include "JSystem/JAudio2/JASAudioThread.h"
 #include "JSystem/JAudio2/JAUSectionHeap.h"
@@ -253,8 +256,27 @@ void main01(void) {
     dusk::game_clock::ensure_initialized();
 
     do {
+#ifdef __EMSCRIPTEN__
+        static int em_loop_iter = 0;
+        if (em_loop_iter < 5 || (em_loop_iter % 60) == 0) {
+            OSReport(">>> main01 loop iter=%d enter\n", em_loop_iter);
+        }
+        em_loop_iter++;
+        // Without an explicit yield, the wasm main loop monopolizes the JS event
+        // loop and the browser never gets a chance to flush rendering, dispatch
+        // input, or pump async I/O. Asyncify rewrites emscripten_sleep into a
+        // wasm suspend → JS yield → resume; a 0 ms sleep is the cheapest "hand
+        // control back to the browser for one tick" primitive available without
+        // restructuring this loop into emscripten_set_main_loop. Placed at the
+        // top so the `continue` after a failed aurora_begin_frame still yields.
+        emscripten_sleep(0);
+        if (em_loop_iter < 5) OSReport(">>> main01 loop iter=%d after sleep\n", em_loop_iter - 1);
+#endif
         // 1. Update Window Events
         const AuroraEvent* event = aurora_update();
+#ifdef __EMSCRIPTEN__
+        if (em_loop_iter < 5) OSReport(">>> main01 loop iter=%d after aurora_update\n", em_loop_iter - 1);
+#endif
         while (true) {
             switch (event->type) {
             case AURORA_NONE:
@@ -282,10 +304,19 @@ void main01(void) {
 
         eventsDone:;
 
+#ifdef __EMSCRIPTEN__
+        if (em_loop_iter < 5) OSReport(">>> main01 iter=%d events processed, calling aurora_begin_frame\n", em_loop_iter - 1);
+#endif
         if (!aurora_begin_frame()) {
+#ifdef __EMSCRIPTEN__
+            if (em_loop_iter < 5) OSReport(">>> main01 iter=%d aurora_begin_frame returned FALSE\n", em_loop_iter - 1);
+#endif
             DuskLog.debug("aurora_begin_frame returned false, skipping draw this frame");
             continue;
         }
+#ifdef __EMSCRIPTEN__
+        if (em_loop_iter < 5) OSReport(">>> main01 iter=%d aurora_begin_frame returned TRUE\n", em_loop_iter - 1);
+#endif
 
         VIWaitForRetrace();
 
@@ -314,7 +345,7 @@ void main01(void) {
             dusk::frame_interp::interpolate();
             dusk::frame_interp::begin_presentation_camera();
             // run draw functions for anything specially marked to handle interp
-            fpcM_DrawIterater((fpcM_DrawIteraterFunc)fpcM_Draw);
+            fpcM_DrawIterater(fpcM_Draw);
             cAPIGph_Painter();
             dusk::frame_interp::end_presentation_camera();
             dusk::frame_interp::set_ui_tick_pending(false);
@@ -341,6 +372,7 @@ void main01(void) {
         dusk::discord::run_callbacks();
         dusk::discord::update_presence();
 #endif
+
     } while (dusk::IsRunning);
 
     exit:;

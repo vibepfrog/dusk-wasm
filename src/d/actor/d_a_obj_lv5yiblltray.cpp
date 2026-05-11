@@ -199,7 +199,7 @@ void daObjYIblltray_c::sendBall(fpc_ProcID i_ID) {
     fopAcM_SetRoomNo(ball, fopAcM_GetHomeRoomNo(this));
 }
 
-static fopAc_ac_c* searchObjYIblltray(void* i_trayB, void* i_trayA) {
+static void* searchObjYIblltray(void* i_trayB, void* i_trayA) {
     if (i_trayB != NULL && fopAcM_IsActor(i_trayB) &&
         fopAcM_GetProfName(i_trayB) == fpcNm_Obj_YIblltray_e && i_trayB != i_trayA)
     {
@@ -211,7 +211,7 @@ static fopAc_ac_c* searchObjYIblltray(void* i_trayB, void* i_trayA) {
     return NULL;
 }
 
-static fopAc_ac_c* searchNearIronball(void* i_ball, void* i_tray) {
+static void* searchNearIronball(void* i_ball, void* i_tray) {
     if (i_ball != NULL && fopAcM_IsActor(i_ball) && fopAcM_GetProfName(i_ball) == fpcNm_Obj_Carry_e &&
         ((daObjCarry_c*)i_ball)->getType() == daObjCarry_c::TYPE_IRON_BALL &&
         VECSquareDistance(&((daObjCarry_c*)i_ball)->current.pos,
@@ -223,7 +223,7 @@ static fopAc_ac_c* searchNearIronball(void* i_ball, void* i_tray) {
     return NULL;
 }
 
-static fopAc_ac_c* searchNearBackTrayIronball(void* i_ball, void* i_tray) {
+static void* searchNearBackTrayIronball(void* i_ball, void* i_tray) {
     if (i_ball != NULL && fopAcM_IsActor(i_ball) && fopAcM_GetProfName(i_ball) == fpcNm_Obj_Carry_e &&
         ((daObjCarry_c*)i_ball)->getType() == daObjCarry_c::TYPE_IRON_BALL &&
         VECSquareDistance(&((daObjCarry_c*)i_ball)->current.pos,
@@ -246,7 +246,7 @@ void daObjYIblltray_c::offAttention() {
 int daObjYIblltray_c::Execute(Mtx** param_0) {
     if (!getNoSameRoom() && mTrayID == fpcM_ERROR_PROCESS_ID_e) {
         daObjYIblltray_c* ptray =
-            (daObjYIblltray_c*)fopAcM_Search((fopAcIt_JudgeFunc)searchObjYIblltray, this);
+            (daObjYIblltray_c*)fopAcM_Search(searchObjYIblltray, this);
         JUT_ASSERT(0, ptray != NULL);
 
         mTrayID = fopAcM_GetID(ptray);
@@ -255,7 +255,7 @@ int daObjYIblltray_c::Execute(Mtx** param_0) {
     if (mMode == MODE_FRONT_WAIT) {
         mpBgW->SetRideCallback(rideCallback);
 
-        fopAc_ac_c* ball = fopAcM_Search((fopAcIt_JudgeFunc)searchNearIronball, this);
+        fopAc_ac_c* ball = fopAcM_Search(searchNearIronball, this);
         if (ball != NULL) {
             rideActor(ball);
         }
@@ -322,7 +322,7 @@ int daObjYIblltray_c::Execute(Mtx** param_0) {
                 if (mMode != MODE_FRONT_WAIT && mMode != MODE_FRONT_RIDE && mMode == MODE_BACK_RIDE)
                 {
                     fopAc_ac_c* ball =
-                        fopAcM_Search((fopAcIt_JudgeFunc)searchNearBackTrayIronball, this);
+                        fopAcM_Search(searchNearBackTrayIronball, this);
                     if (ball == NULL) {
                         mMode = MODE_FRONT_WAIT;
                     } else {
@@ -362,7 +362,7 @@ int daObjYIblltray_c::Execute(Mtx** param_0) {
 
                 if (mMode == MODE_BACK_RIDE) {
                     fopAc_ac_c* ball =
-                        fopAcM_Search((fopAcIt_JudgeFunc)searchNearBackTrayIronball, this);
+                        fopAcM_Search(searchNearBackTrayIronball, this);
                     if (ball == NULL) {
                         mMode = MODE_FRONT_WAIT;
                     } else {

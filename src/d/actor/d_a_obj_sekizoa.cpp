@@ -374,7 +374,7 @@ fopAc_ac_c* daObj_Sekizoa_c::getSekizoaP(int param_0) {
 fopAc_ac_c* daObj_Sekizoa_c::getKMsgTagP() {
     mFindCount = 0;
     mSrchName = 0x2eb;
-    fopAcM_Search((fopAcIt_JudgeFunc)srchActor, this);
+    fopAcM_Search(srchActor, this);
     for (int i = 0; i < mFindCount; i++) {
         if (((daTag_KMsg_c*)mFindActorPtrs[i])->getType() == daTag_KMsg_c::KMSG_TYPE_3) {
             return mFindActorPtrs[i];

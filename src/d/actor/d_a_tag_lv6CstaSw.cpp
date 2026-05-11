@@ -40,7 +40,7 @@ int daLv6CstaSw_c::create() {
     return cPhs_COMPLEATE_e;
 }
 
-fopAc_ac_c* daLv6CstaSw_c::searchSekizoAct(void* i_actor, void* param_1) {
+void* daLv6CstaSw_c::searchSekizoAct(void* i_actor, void* param_1) {
     fopAc_ac_c* actor2 = (fopAc_ac_c*)param_1;
     fopAc_ac_c* actor = (fopAc_ac_c*)i_actor;
     if (actor != NULL && fopAcM_IsActor(actor) && fopAcM_GetProfName(actor) == fpcNm_CSTATUE_e) {
@@ -53,7 +53,7 @@ fopAc_ac_c* daLv6CstaSw_c::searchSekizoAct(void* i_actor, void* param_1) {
 bool daLv6CstaSw_c::areaCheck() {
     bool in_area = false;
 
-    fopAc_ac_c* sekizo_p = fopAcM_Search((fopAcIt_JudgeFunc)searchSekizoAct, this);
+    fopAc_ac_c* sekizo_p = fopAcM_Search(searchSekizoAct, this);
     if (sekizo_p == NULL) {
         return false;
     }

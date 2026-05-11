@@ -4,6 +4,7 @@
  */
 
 #include "f_pc/f_pc_manager.h"
+#include <cstdint>
 #include "SSystem/SComponent/c_API_graphic.h"
 #include "SSystem/SComponent/c_lib.h"
 #include "Z2AudioLib/Z2SoundMgr.h"
@@ -23,15 +24,16 @@
 
 #include "tracy/Tracy.hpp"
 
-void fpcM_Draw(void* i_proc) {
+int fpcM_Draw(void* i_proc, void* /*unused*/) {
     fpcDw_Execute((base_process_class*)i_proc);
+    return 0;
 }
 
 int fpcM_DrawIterater(fpcM_DrawIteraterFunc i_drawIterFunc) {
-    return fpcLyIt_OnlyHere(fpcLy_RootLayer(), (fpcLyIt_OnlyHereFunc)i_drawIterFunc, NULL);
+    return fpcLyIt_OnlyHere(fpcLy_RootLayer(), i_drawIterFunc, NULL);
 }
 
-int fpcM_Execute(void* i_proc) {
+int fpcM_Execute(void* i_proc, void* /*unused*/) {
     return fpcEx_Execute((base_process_class*)i_proc);
 }
 
@@ -45,15 +47,26 @@ BOOL fpcM_IsCreating(fpc_ProcID i_id) {
 
 void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_postExecuteFn) {
     ZoneScoped;
+#ifdef __EMSCRIPTEN__
+    static int s_fpcm_iter = 0;
+    bool trace = (s_fpcm_iter++ < 2);
+    if (trace) OSReport(">>> fpcM_Management iter=%d step=1 MtxInit\n", s_fpcm_iter - 1);
+#endif
     MtxInit();
     if (!fapGm_HIO_c::isCaptureScreen()) {
         dComIfGd_peekZdata();
     }
     fapGm_HIO_c::executeCaptureScreen();
+#ifdef __EMSCRIPTEN__
+    if (trace) OSReport(">>> fpcM_Management step=2 dShutdownErrorMsg::execute\n");
+#endif
 
     bool shutdownRet = dShutdownErrorMsg_c::execute();
     if (!shutdownRet) {
         static bool l_dvdError = false;
+#ifdef __EMSCRIPTEN__
+        if (trace) OSReport(">>> fpcM_Management step=3 dDvdErrorMsg::execute\n");
+#endif
 
         bool dvdErrRet = dDvdErrorMsg_c::execute();
         if (!dvdErrRet) {
@@ -68,40 +81,70 @@ void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_p
             if (!dusk::frame_interp::is_enabled())
 #endif
             {
+#ifdef __EMSCRIPTEN__
+                if (trace) OSReport(">>> fpcM_Management step=4 cAPIGph_Painter\n");
+#endif
                 cAPIGph_Painter();
             }
 
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=5 fpcDt_Handler\n");
+#endif
             if (!dPa_control_c::isStatus(1)) {
                 fpcDt_Handler();
             } else {
                 dPa_control_c::offStatus(1);
             }
 
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=6 fpcPi_Handler\n");
+#endif
             if (!fpcPi_Handler()) {
                 JUT_ASSERT(353, FALSE);
             }
 
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=7 fpcCt_Handler\n");
+#endif
             if (!fpcCt_Handler()) {
                 JUT_ASSERT(357, FALSE);
             }
 
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=8 i_preExecuteFn\n");
+#endif
             if (i_preExecuteFn != NULL) {
                 i_preExecuteFn();
             }
 
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=9 fpcEx_Handler\n");
+#endif
             if (!fapGm_HIO_c::isCaptureScreen()) {
-                fpcEx_Handler((fpcLnIt_QueueFunc)fpcM_Execute);
+                fpcEx_Handler(fpcM_Execute);
             }
 
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=10 fpcDw_Handler\n");
+#endif
             if (!fapGm_HIO_c::isCaptureScreen() || fapGm_HIO_c::getCaptureScreenDivH() != 1) {
-                fpcDw_Handler((fpcDw_HandlerFuncFunc)fpcM_DrawIterater, (fpcDw_HandlerFunc)fpcM_Draw);
+                fpcDw_Handler(fpcM_DrawIterater, fpcM_Draw);
             }
 
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=11 i_postExecuteFn\n");
+#endif
             if (i_postExecuteFn != NULL) {
                 i_postExecuteFn();
             }
 
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=12 dComIfGp_drawSimpleModel\n");
+#endif
             dComIfGp_drawSimpleModel();
+#ifdef __EMSCRIPTEN__
+            if (trace) OSReport(">>> fpcM_Management step=13 done\n");
+#endif
         } else if (!l_dvdError) {
             dLib_time_c::stopTime();
             Z2GetSoundMgr()->pauseAllGameSound(true);
@@ -139,11 +182,11 @@ int fpcM_IsPause(void* i_proc, u8 i_flag) {
 }
 
 void fpcM_PauseEnable(void* i_proc, u8 i_flag) {
-    fpcPause_Enable((process_node_class*)i_proc, i_flag & 0xFF);
+    fpcPause_Enable((process_node_class*)i_proc, (void*)(uintptr_t)(i_flag & 0xFF));
 }
 
 void fpcM_PauseDisable(void* i_proc, u8 i_flag) {
-    fpcPause_Disable((process_node_class*)i_proc, i_flag & 0xFF);
+    fpcPause_Disable((process_node_class*)i_proc, (void*)(uintptr_t)(i_flag & 0xFF));
 }
 
 void* fpcM_JudgeInLayer(fpc_ProcID i_layerID, fpcCtIt_JudgeFunc i_judgeFunc, void* i_data) {

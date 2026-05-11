@@ -13,17 +13,19 @@ int fpcCtIt_Method(fpcCtIt_MethodFunc i_method, void* i_data) {
     node_method_data iter;
     iter.method = i_method;
     iter.data = i_data;
-    return cLsIt_Method(&g_fpcCtTg_Queue, (cNdIt_MethodFunc)cTgIt_MethodCall, &iter);
+    return cLsIt_Method(&g_fpcCtTg_Queue, cTgIt_MethodCall, &iter);
 }
 
 void* fpcCtIt_Judge(fpcCtIt_JudgeFunc i_judge, void* i_data) {
     node_judge_data iter;
     iter.method = i_judge;
     iter.data = i_data;
-    return cLsIt_Judge(&g_fpcCtTg_Queue, (cNdIt_JudgeFunc)cTgIt_JudgeFilter, &iter);
+    return cLsIt_Judge(&g_fpcCtTg_Queue, cTgIt_JudgeFilter, &iter);
 }
 
-void* fpcCtIt_filter_JudgeInLayer(create_tag* i_createTag, fpcCtIt_jilprm_c* i_iterData) {
+void* fpcCtIt_filter_JudgeInLayer(void* i_createTagArg, void* i_iterDataArg) {
+    create_tag* i_createTag = static_cast<create_tag*>(i_createTagArg);
+    fpcCtIt_jilprm_c* i_iterData = static_cast<fpcCtIt_jilprm_c*>(i_iterDataArg);
     create_request* create_req = (create_request*)i_createTag->base.mpTagData;
 
     if (create_req->layer->layer_id == i_iterData->layer_id) {
@@ -38,5 +40,5 @@ void* fpcCtIt_JudgeInLayer(fpc_ProcID i_layerID, fpcCtIt_JudgeFunc i_method, voi
     data.layer_id = i_layerID;
     data.method = i_method;
     data.data = i_data;
-    return fpcCtIt_Judge((fpcCtIt_JudgeFunc)fpcCtIt_filter_JudgeInLayer, &data);
+    return fpcCtIt_Judge(fpcCtIt_filter_JudgeInLayer, &data);
 }

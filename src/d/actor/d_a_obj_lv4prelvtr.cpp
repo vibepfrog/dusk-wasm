@@ -48,7 +48,7 @@ int daObjPRElvtr_c::Create() {
     return 1;
 }
 
-static fopAc_ac_c* searchObjSwTurn(void* i_actor1, void* i_actor2) {
+static void* searchObjSwTurn(void* i_actor1, void* i_actor2) {
     if (i_actor1 != NULL && fopAcM_IsActor(i_actor1) &&
         fopAcM_GetProfName(i_actor1) == fpcNm_Obj_SwTurn_e)
     {
@@ -62,7 +62,7 @@ static fopAc_ac_c* searchObjSwTurn(void* i_actor1, void* i_actor2) {
 
 int daObjPRElvtr_c::Execute(Mtx** i_mtx) {
     daObjSwTurn_c* sw_turn =
-        (daObjSwTurn_c*)fopAcM_Search((fopAcIt_JudgeFunc)searchObjSwTurn, this);
+        (daObjSwTurn_c*)fopAcM_Search(searchObjSwTurn, this);
 
     if (sw_turn != NULL) {
         field_0x60c = sw_turn->getRotateAngle();
