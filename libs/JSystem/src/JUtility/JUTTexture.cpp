@@ -146,6 +146,11 @@ void JUTTexture::initTexObj() {
     GXBool mipmapEnabled = mTexInfo->mipmapEnabled != 0 ? GX_TRUE : GX_FALSE;
     u8* image = ((u8*)mTexInfo);
     s32 imgOffset = mTexInfo->imageOffset;
+    // GXTexFmt: 0=I4 1=I8 2=IA4 3=IA8 4=RGB565 5=RGB5A3 6=RGBA8 14=CMPR.
+    // (no TLUT here — this is the non-CI variant)
+    DuskLog.debug("initTexObj(non-CI): fmt={} W={} H={} mip={} Ptr={}",
+                  (u32)mTexInfo->format, (u16)mTexInfo->width, (u16)mTexInfo->height,
+                  (int)mipmapEnabled, (void*)mTexInfo);
     image += (imgOffset ? imgOffset : 0x20);
 #ifdef TARGET_PC
     mTexObj.reset();
@@ -163,9 +168,11 @@ void JUTTexture::initTexObj(GXTlut param_0) {
     mTlutName = param_0;
     u8* image = ((u8*)mTexInfo);
     s32 imgOffset = mTexInfo->imageOffset;
-    DuskLog.debug("initTexObj: Offset={}, W={}, H={}, Ptr={}", imgOffset, (u16)mTexInfo->width,
-           (u16)mTexInfo->height,
-           (void*)mTexInfo);
+    // GXCITexFmt: 8=C4 9=C8 10=C14X2. numColors / palette comes from mEmbPalette.
+    DuskLog.debug("initTexObj(CI): fmt={} W={} H={} mip={} tlut={} numColors={} Ptr={}",
+                  (u32)mTexInfo->format, (u16)mTexInfo->width, (u16)mTexInfo->height,
+                  (int)mipmapEnabled, (u32)param_0, (u32)mTexInfo->numColors,
+                  (void*)mTexInfo);
     image += (imgOffset ? imgOffset : 0x20);
 #ifdef TARGET_PC
     mTexObj.reset();

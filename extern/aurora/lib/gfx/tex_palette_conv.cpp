@@ -214,6 +214,16 @@ void shutdown() {
 }
 
 void run(const wgpu::CommandEncoder& cmd, const ConvRequest& req) {
+  // Track palette-decode invocations to confirm the pipeline is actually
+  // running for CI4/CI8 textures. If the menu shows gray glyphs and this
+  // counter never grows, paletteConvs list is empty and indexed textures
+  // are being sampled raw (with palette-index values shown as colors).
+  // Logged every 256 invocations to avoid spamming during normal play.
+  static uint32_t s_invocations = 0;
+  if ((++s_invocations & 0xFF) == 1) {
+    Log.info("tex_palette_conv::run: invocation #{} variant={}", s_invocations,
+             static_cast<int>(req.variant));
+  }
   const auto& [pipeline, bindGroupLayout] = pipeline_for_variant(req.variant);
 
   const std::array bindGroupEntries{
