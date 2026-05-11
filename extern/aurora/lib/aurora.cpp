@@ -21,10 +21,122 @@
 
 #include "tracy/Tracy.hpp"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 namespace aurora {
 AuroraConfig g_config;
 uint32_t g_sdlCustomEventsStart;
 char g_gameName[4];
+
+#ifdef __EMSCRIPTEN__
+// Frame-pipeline diagnostic state. Captures two layers of signal:
+//
+//  (1) Acquire→submit window for the recurring "Destroyed texture
+//      used in submit" WebGPU error. Texture is acquired (late, in
+//      end_frame) and timestamped; on Submit we measure elapsed and
+//      log a warning if anything went wrong.
+//
+//  (2) Per-iter (main-loop) profiler. on_iter_begin/on_iter_end
+//      bracket a complete main01 iteration. We accumulate min/avg/max
+//      iter time + heap usage; every kPeriodFrames frames we dump a
+//      summary so the user can spot frame-time spikes, slow
+//      steady-state, or growing heap (potential leak).
+//
+// All log lines are tagged "[FrameDiag]" / "[FrameProfile]" so they
+// are easy to filter in browser DevTools.
+namespace frame_diag {
+
+// -- (1) acquire→submit window --
+double surface_acquired_at_ms = 0.0;
+double last_submit_elapsed_ms = 0.0;
+uint32_t yields_since_acquire = 0;
+uint32_t total_warnings_logged = 0;
+bool acquired = false;
+constexpr double log_threshold_ms = 5.0;
+constexpr uint32_t log_throttle_after = 8; // after N warnings, log every 60th
+
+// -- (2) per-iter profiler --
+constexpr uint32_t kPeriodFrames = 60;
+double iter_start_at_ms = 0.0;
+double iter_sum_ms = 0.0;
+double iter_min_ms = 1e9;
+double iter_max_ms = 0.0;
+uint32_t iter_count = 0;
+uint64_t total_iter_count = 0;
+double last_summary_at_ms = 0.0;
+uint64_t last_heap_size = 0;
+uint64_t initial_heap_size = 0;
+
+} // namespace frame_diag
+
+extern "C" void aurora_frame_diag_note_yield() noexcept {
+  if (frame_diag::acquired) {
+    ++frame_diag::yields_since_acquire;
+  }
+}
+
+// Called once per main-loop iteration, at the SAME position each time.
+// Measures the wall-clock delta from the previous call → this call as the
+// duration of the previous iter. Doing it this way (instead of a paired
+// begin/end) means `continue` statements in the main loop don't leak the
+// iter measurement into the next one — every call delimits an iter.
+extern "C" void aurora_frame_diag_iter_tick() noexcept {
+  const double now = emscripten_get_now();
+  if (frame_diag::iter_start_at_ms == 0.0) {
+    // First call — nothing to measure yet.
+    frame_diag::iter_start_at_ms = now;
+    frame_diag::last_summary_at_ms = now;
+    return;
+  }
+  const double iter_ms = now - frame_diag::iter_start_at_ms;
+  frame_diag::iter_start_at_ms = now;
+
+  frame_diag::iter_sum_ms += iter_ms;
+  frame_diag::iter_min_ms = std::min(frame_diag::iter_min_ms, iter_ms);
+  frame_diag::iter_max_ms = std::max(frame_diag::iter_max_ms, iter_ms);
+  ++frame_diag::iter_count;
+  ++frame_diag::total_iter_count;
+
+  if (frame_diag::iter_count >= frame_diag::kPeriodFrames) {
+    const double window_ms = now - frame_diag::last_summary_at_ms;
+    const double avg_ms = frame_diag::iter_sum_ms / frame_diag::iter_count;
+    // FPS over the wall-clock window (uses real elapsed time, not just
+    // iter sum, so we capture any non-iter overhead between summaries).
+    const double fps = (window_ms > 0.0)
+        ? (1000.0 * static_cast<double>(frame_diag::iter_count) / window_ms)
+        : 0.0;
+
+    const uint64_t heap_now = static_cast<uint64_t>(emscripten_get_heap_size());
+    if (frame_diag::initial_heap_size == 0) {
+      frame_diag::initial_heap_size = heap_now;
+    }
+    const int64_t heap_delta_period =
+        static_cast<int64_t>(heap_now) - static_cast<int64_t>(frame_diag::last_heap_size);
+    const int64_t heap_delta_total =
+        static_cast<int64_t>(heap_now) - static_cast<int64_t>(frame_diag::initial_heap_size);
+
+    Log.info("[FrameProfile] iter#{} fps={:.1f} ms(min/avg/max)={:.1f}/{:.1f}/{:.1f}"
+             " acq->submit_last={:.2f}ms warns={} heap={}MB (Δ{:+d}MB/period, Δ{:+d}MB total)",
+             static_cast<unsigned long long>(frame_diag::total_iter_count),
+             fps,
+             frame_diag::iter_min_ms, avg_ms, frame_diag::iter_max_ms,
+             frame_diag::last_submit_elapsed_ms,
+             frame_diag::total_warnings_logged,
+             heap_now / (1024 * 1024),
+             static_cast<int>(heap_delta_period / (1024 * 1024)),
+             static_cast<int>(heap_delta_total / (1024 * 1024)));
+
+    frame_diag::iter_sum_ms = 0.0;
+    frame_diag::iter_min_ms = 1e9;
+    frame_diag::iter_max_ms = 0.0;
+    frame_diag::iter_count = 0;
+    frame_diag::last_summary_at_ms = now;
+    frame_diag::last_heap_size = heap_now;
+  }
+}
+#endif
 
 namespace {
 Module Log("aurora");
@@ -229,9 +341,17 @@ bool begin_frame() noexcept {
   // gfx::begin_frame() yields the wasm thread (emscripten_sleep) while waiting
   // for the staging-buffer MapAsync callback. Under emscripten the browser
   // reclaims the swapchain texture during that yield — if we acquire the
-  // surface texture FIRST, by the time we submit it's been destroyed
-  // ("Destroyed texture used in a submit"). So pump the buffer-map wait
-  // BEFORE GetCurrentTexture; the staging buffer is independent of the surface.
+  // surface texture HERE, by the time we submit it has been destroyed
+  // ("Destroyed texture used in a submit"). Previously we tried fixing this
+  // by reordering only the MapAsync wait to run before GetCurrentTexture,
+  // but the destroyed-texture errors still fire — Chrome appears to recycle
+  // the swapchain texture based on wall-clock time, not just on explicit
+  // yields, so a long synchronous frame between acquire and submit is also
+  // unsafe. We now defer GetCurrentTexture entirely to end_frame's present
+  // block, immediately before the two render passes that use it; the
+  // acquire-to-submit window shrinks to a few microseconds of command
+  // recording. The staging-buffer MapAsync wait remains here because it
+  // is independent of the surface and needs the yield to complete.
   imgui::new_frame(window::get_window_size());
   if (!gfx::begin_frame()) {
     g_currentView = {};
@@ -247,38 +367,9 @@ bool begin_frame() noexcept {
     if (window::is_paused()) {
       return false;
     }
-    if (!g_surface) {
-      webgpu::refresh_surface(true);
-      if (!g_surface) {
-        return false;
-      }
-    }
-    wgpu::SurfaceTexture surfaceTexture;
-    g_surface.GetCurrentTexture(&surfaceTexture);
-    switch (surfaceTexture.status) {
-    case wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal:
-      g_currentView = surfaceTexture.texture.CreateView();
-      break;
-    case wgpu::SurfaceGetCurrentTextureStatus::Timeout:
-      Log.warn("Surface texture acquisition timed out");
-      return false;
-    case wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal:
-    case wgpu::SurfaceGetCurrentTextureStatus::Outdated:
-      Log.info("Surface texture is {}, reconfiguring swapchain", magic_enum::enum_name(surfaceTexture.status));
-      webgpu::refresh_surface(false);
-      return false;
-    case wgpu::SurfaceGetCurrentTextureStatus::Lost:
-      Log.warn("Surface texture is {}, releasing surface", magic_enum::enum_name(surfaceTexture.status));
-      webgpu::release_surface();
-    case wgpu::SurfaceGetCurrentTextureStatus::Error:
-      Log.warn("Surface texture is {}, dropping surface", magic_enum::enum_name(surfaceTexture.status));
-      g_surface = {};
-      return false;
-    default:
-      Log.error("Failed to get surface texture: {}", magic_enum::enum_name(surfaceTexture.status));
-      return false;
-    }
   }
+  // g_currentView intentionally left empty here — populated by end_frame.
+  g_currentView = {};
 #endif
   return true;
 }
@@ -295,7 +386,56 @@ void end_frame() noexcept {
   gfx::render(encoder);
   {
     window::SurfaceLock surfaceLock;
-    if (window::is_presentable() && g_surface && g_currentView) {
+    // Late-acquire the swapchain texture: do it right before recording the
+    // EFB-copy + ImGui passes (the only passes that reference g_currentView)
+    // so the time window between GetCurrentTexture and Queue.Submit is the
+    // shortest possible — just two render-pass recordings and encoder.Finish.
+    // This is the smallest-window-possible workaround for Chrome recycling
+    // the texture too eagerly; see the begin_frame comment for context.
+    bool present_ready = false;
+    if (window::is_presentable() && !window::is_paused()) {
+      if (!g_surface) {
+        webgpu::refresh_surface(true);
+      }
+      if (g_surface) {
+        wgpu::SurfaceTexture surfaceTexture;
+        g_surface.GetCurrentTexture(&surfaceTexture);
+        switch (surfaceTexture.status) {
+        case wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal:
+          g_currentView = surfaceTexture.texture.CreateView();
+#ifdef __EMSCRIPTEN__
+          frame_diag::surface_acquired_at_ms = emscripten_get_now();
+          frame_diag::yields_since_acquire = 0;
+          frame_diag::acquired = true;
+#endif
+          present_ready = true;
+          break;
+        case wgpu::SurfaceGetCurrentTextureStatus::Timeout:
+          Log.warn("Surface texture acquisition timed out (late-acquire path)");
+          break;
+        case wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal:
+        case wgpu::SurfaceGetCurrentTextureStatus::Outdated:
+          Log.info("Surface texture is {}, reconfiguring swapchain",
+                   magic_enum::enum_name(surfaceTexture.status));
+          webgpu::refresh_surface(false);
+          break;
+        case wgpu::SurfaceGetCurrentTextureStatus::Lost:
+          Log.warn("Surface texture is {}, releasing surface",
+                   magic_enum::enum_name(surfaceTexture.status));
+          webgpu::release_surface();
+          [[fallthrough]];
+        case wgpu::SurfaceGetCurrentTextureStatus::Error:
+          Log.warn("Surface texture is {}, dropping surface",
+                   magic_enum::enum_name(surfaceTexture.status));
+          g_surface = {};
+          break;
+        default:
+          Log.error("Failed to get surface texture: {}", magic_enum::enum_name(surfaceTexture.status));
+          break;
+        }
+      }
+    }
+    if (present_ready && g_surface && g_currentView) {
       const auto& presentSource = webgpu::present_source();
       auto viewport = webgpu::calculate_present_viewport(webgpu::g_graphicsConfig.surfaceConfiguration.width,
                                                          webgpu::g_graphicsConfig.surfaceConfiguration.height,
@@ -356,6 +496,31 @@ void end_frame() noexcept {
     }
     const wgpu::CommandBufferDescriptor cmdBufDescriptor{.label = "Redraw command buffer"};
     const auto buffer = encoder.Finish(&cmdBufDescriptor);
+#ifdef __EMSCRIPTEN__
+    // Capture timing immediately before Submit so the elapsed-ms reading
+    // includes ALL of: gx::fifo::drain, gfx::end_frame buffer copies,
+    // gfx::render render-pass recording, rmlui::render, the EFB-copy +
+    // ImGui passes, and encoder.Finish. Any non-zero yield count or
+    // multi-tens-of-ms elapsed pinpoints which class of cause we are
+    // looking at: explicit yield (yields > 0), implicit yield from
+    // emdawnwebgpu/SDL (yields == 0 but elapsed jumps), or just slow
+    // synchronous work (yields == 0, elapsed grows monotonically).
+    if (frame_diag::acquired) {
+      const double elapsed = emscripten_get_now() - frame_diag::surface_acquired_at_ms;
+      frame_diag::last_submit_elapsed_ms = elapsed;
+      const bool over_threshold = elapsed > frame_diag::log_threshold_ms;
+      const bool had_yield = frame_diag::yields_since_acquire > 0;
+      if (over_threshold || had_yield) {
+        const uint32_t n = ++frame_diag::total_warnings_logged;
+        // First few are spammed to console; after that, throttle to every 60th.
+        if (n <= frame_diag::log_throttle_after || (n % 60) == 0) {
+          Log.warn("[FrameDiag] acq->submit={:.2f}ms yields_in_window={} (warn #{})",
+                   elapsed, frame_diag::yields_since_acquire, n);
+        }
+      }
+      frame_diag::acquired = false;
+    }
+#endif
     g_queue.Submit(1, &buffer);
     gfx::after_submit();
     if (window::is_presentable() && g_surface) {

@@ -256,6 +256,14 @@ void main01(void) {
     dusk::game_clock::ensure_initialized();
 
     do {
+#ifdef __EMSCRIPTEN__
+        // Per-iter profiler tick. Placed at the very top of the loop so each
+        // call delimits a complete iter (including the yield + any `continue`
+        // short-circuits). aurora's frame_diag prints an aggregated summary
+        // every 60 iters: FPS, min/avg/max iter time, last submit window, heap.
+        extern "C" void aurora_frame_diag_iter_tick() noexcept;
+        aurora_frame_diag_iter_tick();
+#endif
 #if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         static int em_loop_iter = 0;
         if (em_loop_iter < 5 || (em_loop_iter % 60) == 0) {
