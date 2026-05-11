@@ -102,21 +102,29 @@ if (CMAKE_SYSTEM_NAME STREQUAL Linux)
 endif ()
 
 if (EMSCRIPTEN)
-  # CMAKE_HOST_WIN32 only — on Windows, emsdk's Emscripten.cmake toolchain
-  # sets CMAKE_AR to emar.bat, which routes through cmd.exe. cmd.exe's
-  # ~8190-char argv limit gets hit by cargo's cc-rs invoking AR for
-  # liblzma-sys/libz-sys/zstd-sys/bzip2-sys static archives. Bypass to the
-  # bundled llvm-ar.exe (real PE binary, no cmd.exe involved). On Linux/macOS
-  # emar is a shell script with no such limit — emcc's default works fine.
-  if (CMAKE_HOST_WIN32)
-    if (NOT DEFINED ENV{EMSDK})
-      message(FATAL_ERROR "EMSDK env var not set; activate emsdk before configuring.")
-    endif ()
-    set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar.exe" CACHE FILEPATH
-        "Use emsdk's bundled llvm-ar instead of emar.bat (avoids cmd.exe argv limit)" FORCE)
-    unset(CMAKE_AR)
-    set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar.exe")
+  # Pin CMAKE_AR to emsdk's bundled llvm-ar directly. Two reasons:
+  #  1. Windows: emsdk's Emscripten.cmake toolchain sets CMAKE_AR to emar.bat,
+  #     which routes through cmd.exe. cmd.exe's ~8190-char argv limit gets hit
+  #     by cargo's cc-rs invoking AR for liblzma-sys/libz-sys/zstd-sys/bzip2-sys
+  #     static archives. llvm-ar.exe is a real PE binary, no cmd.exe involved.
+  #  2. Linux (GH Actions): the Emscripten.cmake toolchain has been observed
+  #     to leave CMAKE_AR empty in some scopes (when the cache override gets
+  #     unset and the toolchain isn't re-evaluated), causing ninja to emit
+  #     `"" qc ...` and exit 127. Setting it explicitly here guarantees a
+  #     valid path on every host.
+  # Pick the host-specific binary suffix.
+  if (NOT DEFINED ENV{EMSDK})
+    message(FATAL_ERROR "EMSDK env var not set; activate emsdk before configuring.")
   endif ()
+  if (CMAKE_HOST_WIN32)
+    set(_emsdk_ar_suffix ".exe")
+  else ()
+    set(_emsdk_ar_suffix "")
+  endif ()
+  set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar${_emsdk_ar_suffix}" CACHE FILEPATH
+      "Use emsdk's bundled llvm-ar (bypasses Windows cmd.exe argv limit and Linux empty-AR bug)" FORCE)
+  unset(CMAKE_AR)
+  set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar${_emsdk_ar_suffix}")
 
   # emcc compiles C++ with exceptions DISABLED by default — every try/catch is
   # elided and throws unwind straight past them to JS as uncaught CppException.
