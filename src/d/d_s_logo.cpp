@@ -1079,27 +1079,35 @@ int dScnLogo_c::create() {
     #endif
 
     mpHeap = mDoExt_setCurrentHeap(mLogo01Heap);
+    DuskLog.debug("dScnLogo_c::create: heap set, calling logoInitGC");
 
     #if PLATFORM_WII || PLATFORM_SHIELD
     logoInitWii();
     #else
     logoInitGC();
     #endif
+    DuskLog.debug("dScnLogo_c::create: logoInitGC returned");
 
     JKRSetCurrentHeap(mpHeap);
 
     OS_REPORT("\x1b[31m%d gameHeap->getFreeSize %08x(%d)\n\x1b[m", 1732, mDoExt_getGameHeap()->getFreeSize(), mDoExt_getGameHeap()->getFreeSize());
 
+    DuskLog.debug("dScnLogo_c::create: calling dvdDataLoad");
     dvdDataLoad();
+    DuskLog.debug("dScnLogo_c::create: dvdDataLoad returned");
 
     OS_REPORT("\x1b[31m%d gameHeap->getFreeSize %08x(%d)\n\x1b[m", 1738, mDoExt_getGameHeap()->getFreeSize(), mDoExt_getGameHeap()->getFreeSize());
 
     #if !(PLATFORM_WII || PLATFORM_SHIELD)
+    DuskLog.debug("dScnLogo_c::create: calling loadStaticWaves");
     Z2AudioMgr::getInterface()->loadStaticWaves();
+    DuskLog.debug("dScnLogo_c::create: loadStaticWaves returned");
     #endif
 
     mDoGph_gInf_c::setTickRate(OS_TIMER_CLOCK / 60);
+    DuskLog.debug("dScnLogo_c::create: calling waitBlanking");
     mDoGph_gInf_c::waitBlanking(0);
+    DuskLog.debug("dScnLogo_c::create: waitBlanking returned");
 
     field_0x20a = 0;
 

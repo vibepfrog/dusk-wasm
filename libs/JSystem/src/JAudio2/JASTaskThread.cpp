@@ -56,6 +56,17 @@ void* JASTaskThread::allocCallStack(JASThreadCallback callback, void* msg) {
 }
 
 int JASTaskThread::sendCmdMsg(JASThreadCallback callback, const void* msg, u32 msgSize) {
+#ifdef __EMSCRIPTEN__
+    // Single-threaded wasm: the JAS task thread (JASDvd, JASAramStream, etc.)
+    // is silently no-op'd by the emscripten branch of OSResumeThread in
+    // src/dusk/OSThread.cpp. JASTaskThread::run() is a pump that would dequeue
+    // messages and invoke the callback — running the callback inline here is
+    // the same shape of fix we applied to mDoDvdThd_param_c::addition. The
+    // callback contract accepts the message pointer; we pass it through since
+    // the caller's buffer is still alive on the stack at the invocation point.
+    callback(const_cast<void*>(msg));
+    return 1;
+#else
     void* callstack;
 
     callstack = allocCallStack(callback, msg, msgSize);
@@ -68,9 +79,15 @@ int JASTaskThread::sendCmdMsg(JASThreadCallback callback, const void* msg, u32 m
         JASKernel::getCommandHeap()->free(callstack);
     }
     return iVar2;
+#endif
 }
 
 int JASTaskThread::sendCmdMsg(JASThreadCallback callback, void* msg) {
+#ifdef __EMSCRIPTEN__
+    // See the const-buffer overload above for context — same inline dispatch.
+    callback(msg);
+    return 1;
+#else
     void* callstack;
 
     callstack = allocCallStack(callback, msg);
@@ -83,6 +100,7 @@ int JASTaskThread::sendCmdMsg(JASThreadCallback callback, void* msg) {
         JASKernel::getCommandHeap()->free(callstack);
     }
     return iVar2;
+#endif
 }
 
 void* JASTaskThread::run() {
