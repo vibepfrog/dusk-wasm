@@ -264,6 +264,22 @@ void apply_port_preferences() noexcept {
   ensure_port_preferences_loaded();
   if (!std::any_of(g_portPreferences.begin(), g_portPreferences.end(),
                    [](const auto& preference) { return preference.state != PortPreferenceState::Unset; })) {
+    // First-run UX: user has never configured a port. Auto-bind the first
+    // connected controller (by SDL_JoystickID order) to player 0 so the
+    // game has a usable controller without making the user dig through
+    // the prelaunch settings. Don't persist this — leaving the preference
+    // state as Unset means a real user choice still takes priority once
+    // they configure things, and ensures we don't lock a specific
+    // controller to port 0 forever on first plug-in.
+    for (auto& [instance, controller] : g_GameControllers) {
+      if (SDL_GetGamepadPlayerIndex(controller.m_controller) >= 0) {
+        return; // SDL already picked a player slot — respect it
+      }
+    }
+    if (!g_GameControllers.empty()) {
+      auto& [instance, controller] = *g_GameControllers.begin();
+      SDL_SetGamepadPlayerIndex(controller.m_controller, 0);
+    }
     return;
   }
 

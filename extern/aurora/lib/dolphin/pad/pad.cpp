@@ -1138,10 +1138,50 @@ void PADClearKeyBindings(u32 port) {
 constexpr uint32_t k_keyboardMagic = SBIG('KBND');
 constexpr int32_t k_keyboardVersion = 2;
 
+// Sensible WASD + arrow-keys defaults installed for port 0 when no
+// keyboard_bindings.dat exists, so first-run users (especially the web
+// build, where /libsdl is not persisted across reloads — see web/pre.js)
+// can play without diving into the controller-config UI to bind every
+// key by hand. WASD drives the left stick (movement), arrow keys drive
+// the right stick (camera), the diamond keys map to A/B/X/Y, and F maps
+// to Z (z-target). DPad is intentionally left unbound — TP rarely needs
+// it, and the arrow keys are already used for camera.
+static void install_default_keyboard_bindings_port0() {
+  auto& state = g_keyboardBindings[0];
+  state.m_buttonMapping = {
+      PADKeyButtonBinding{SDL_SCANCODE_SPACE,  PAD_BUTTON_A},
+      PADKeyButtonBinding{SDL_SCANCODE_LSHIFT, PAD_BUTTON_B},
+      PADKeyButtonBinding{SDL_SCANCODE_E,      PAD_BUTTON_X},
+      PADKeyButtonBinding{SDL_SCANCODE_Q,      PAD_BUTTON_Y},
+      PADKeyButtonBinding{SDL_SCANCODE_RETURN, PAD_BUTTON_START},
+      PADKeyButtonBinding{SDL_SCANCODE_F,      PAD_TRIGGER_Z},
+      PADKeyButtonBinding{SDL_SCANCODE_Z,      PAD_TRIGGER_L},
+      PADKeyButtonBinding{SDL_SCANCODE_C,      PAD_TRIGGER_R},
+      PADKeyButtonBinding{PAD_KEY_INVALID,     PAD_BUTTON_UP},
+      PADKeyButtonBinding{PAD_KEY_INVALID,     PAD_BUTTON_DOWN},
+      PADKeyButtonBinding{PAD_KEY_INVALID,     PAD_BUTTON_LEFT},
+      PADKeyButtonBinding{PAD_KEY_INVALID,     PAD_BUTTON_RIGHT},
+  };
+  state.m_axisMapping = {
+      PADKeyAxisBinding{SDL_SCANCODE_D,     PAD_AXIS_LEFT_X_POS,  100},
+      PADKeyAxisBinding{SDL_SCANCODE_A,     PAD_AXIS_LEFT_X_NEG,  100},
+      PADKeyAxisBinding{SDL_SCANCODE_W,     PAD_AXIS_LEFT_Y_POS,  100},
+      PADKeyAxisBinding{SDL_SCANCODE_S,     PAD_AXIS_LEFT_Y_NEG,  100},
+      PADKeyAxisBinding{SDL_SCANCODE_RIGHT, PAD_AXIS_RIGHT_X_POS, 100},
+      PADKeyAxisBinding{SDL_SCANCODE_LEFT,  PAD_AXIS_RIGHT_X_NEG, 100},
+      PADKeyAxisBinding{SDL_SCANCODE_UP,    PAD_AXIS_RIGHT_Y_POS, 100},
+      PADKeyAxisBinding{SDL_SCANCODE_DOWN,  PAD_AXIS_RIGHT_Y_NEG, 100},
+      PADKeyAxisBinding{PAD_KEY_INVALID,    PAD_AXIS_TRIGGER_L,   0},
+      PADKeyAxisBinding{PAD_KEY_INVALID,    PAD_AXIS_TRIGGER_R,   0},
+  };
+  state.m_mappingsSet = true;
+}
+
 static void load_keyboard_bindings() {
   std::filesystem::path filePath = std::filesystem::path{aurora::g_config.configPath} / "keyboard_bindings.dat";
   SDL_IOStream* file = SDL_IOFromFile(filePath.string().c_str(), "rb");
   if (file == nullptr) {
+    install_default_keyboard_bindings_port0();
     return;
   }
 
