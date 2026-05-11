@@ -47,6 +47,10 @@ char g_gameName[4];
 // All log lines are tagged "[FrameDiag]" / "[FrameProfile]" so they
 // are easy to filter in browser DevTools.
 namespace frame_diag {
+// Own logger so we don't need to reach into the anonymous namespace's
+// Log instance (which would be invisible from extern "C" functions
+// defined at aurora:: scope).
+Module Log("aurora::frame_diag");
 
 // -- (1) acquire→submit window --
 double surface_acquired_at_ms = 0.0;
@@ -68,6 +72,14 @@ uint64_t total_iter_count = 0;
 double last_summary_at_ms = 0.0;
 uint64_t last_heap_size = 0;
 uint64_t initial_heap_size = 0;
+
+// __builtin_wasm_memory_size(0) returns the wasm linear-memory page count
+// (each page = 64 KiB). This is the closest portable analogue to a
+// "process memory size" reading we can get without pulling in the
+// emscripten heap.h helpers, which moved across emsdk versions.
+inline uint64_t heap_size_bytes() noexcept {
+  return static_cast<uint64_t>(__builtin_wasm_memory_size(0)) * 65536ull;
+}
 
 } // namespace frame_diag
 
@@ -108,7 +120,7 @@ extern "C" void aurora_frame_diag_iter_tick() noexcept {
         ? (1000.0 * static_cast<double>(frame_diag::iter_count) / window_ms)
         : 0.0;
 
-    const uint64_t heap_now = static_cast<uint64_t>(emscripten_get_heap_size());
+    const uint64_t heap_now = frame_diag::heap_size_bytes();
     if (frame_diag::initial_heap_size == 0) {
       frame_diag::initial_heap_size = heap_now;
     }
@@ -117,16 +129,17 @@ extern "C" void aurora_frame_diag_iter_tick() noexcept {
     const int64_t heap_delta_total =
         static_cast<int64_t>(heap_now) - static_cast<int64_t>(frame_diag::initial_heap_size);
 
-    Log.info("[FrameProfile] iter#{} fps={:.1f} ms(min/avg/max)={:.1f}/{:.1f}/{:.1f}"
-             " acq->submit_last={:.2f}ms warns={} heap={}MB (Δ{:+d}MB/period, Δ{:+d}MB total)",
-             static_cast<unsigned long long>(frame_diag::total_iter_count),
-             fps,
-             frame_diag::iter_min_ms, avg_ms, frame_diag::iter_max_ms,
-             frame_diag::last_submit_elapsed_ms,
-             frame_diag::total_warnings_logged,
-             heap_now / (1024 * 1024),
-             static_cast<int>(heap_delta_period / (1024 * 1024)),
-             static_cast<int>(heap_delta_total / (1024 * 1024)));
+    frame_diag::Log.info(
+        "[FrameProfile] iter#{} fps={:.1f} ms(min/avg/max)={:.1f}/{:.1f}/{:.1f}"
+        " acq->submit_last={:.2f}ms warns={} heap={}MB (Δ{:+d}MB/period, Δ{:+d}MB total)",
+        static_cast<unsigned long long>(frame_diag::total_iter_count),
+        fps,
+        frame_diag::iter_min_ms, avg_ms, frame_diag::iter_max_ms,
+        frame_diag::last_submit_elapsed_ms,
+        frame_diag::total_warnings_logged,
+        heap_now / (1024 * 1024),
+        static_cast<int>(heap_delta_period / (1024 * 1024)),
+        static_cast<int>(heap_delta_total / (1024 * 1024)));
 
     frame_diag::iter_sum_ms = 0.0;
     frame_diag::iter_min_ms = 1e9;
