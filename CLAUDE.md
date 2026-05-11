@@ -1,58 +1,35 @@
 # Dusk → WebAssembly port
 
 Multi-week port of the TwilitRealm Twilight Princess decompilation to a static GitHub
-Pages site that boots in any modern browser after a one-time EUR ISO upload. The
-strategic plan lives at `../PLAN.md`. Detailed running notes (build issue catalog,
-explicit deferrals, file map of WASM-port additions) live at `docs/wasm-port-notes.md`.
-**Read both before making changes.**
+Pages site that boots in any modern WebGPU-capable browser after a one-time EUR ISO
+upload. Strategic plan: `../PLAN.md`. Detailed build-issue catalog + deferrals:
+`docs/wasm-port-notes.md`. **Read both before substantive changes.**
 
-## Where we are (2026-05-10, updated)
+## Where we are (2026-05-11)
 
-**🎉 The Dusk "WELCOME TO DUSK" preset UI renders in real Chrome.** Boot
-reaches the prelaunch UI with the Classic/Dusk preset selection buttons,
-fully styled — RmlUi-on-WebGPU-via-emdawnwebgpu working end-to-end.
-Smoke test runs ~50 main01 iterations per session before the test harness
-times out (game keeps running fine; harness just stops watching).
+**Deployed and live at https://sh1ftmaker.github.io/dusk-wasm/.** Fork is at
+https://github.com/sh1ftmaker/dusk-wasm (branch `wasm-port`, default branch). README
+banners it as unofficial; not affiliated with TwilitRealm.
 
-**Chain of fixes that unlocked the UI**, in dependency order:
+Headful Puppeteer smoke against the live URL (and the local fast build) consistently
+boots to the prelaunch "WELCOME TO DUSK" preset selection screen, accepts clicks, and
+advances to "NO CONTROLLER ASSIGNED". 12k+ events, 0 PAGEERRORs, ~70 main01 loop
+iterations per session. The wasm runtime stays healthy; the test harness times out
+watching the canvas, not the game.
 
-1. `OSResumeThread` chokepoint (`src/dusk/OSThread.cpp:354`) — single
-   `#ifdef __EMSCRIPTEN__` skip stops `std::thread` spawn aborts for all
-   game threads (DVD, MemCard, audio, etc).
-2. `emscripten_sleep(0)` at top of `m_Do_main.cpp`'s `main01` loop —
-   yields to JS each iteration so the browser can paint.
-3. `emscripten_sleep(0)` inside `aurora/lib/gfx/common.cpp` `begin_frame`
-   MapAsync wait spin — emdawnwebgpu callbacks fire from JS event loop.
-4. ~80 function-pointer signature widenings across `f_pc/`, `f_op/`,
-   `d/actor/*`, plus `cAPIGph_IntMthd` typedef split — wasm CFI is strict
-   where native compilers tolerated `(WideFunc)narrowFn` casts.
-5. `wgpuSurfacePresent` skipped under `__EMSCRIPTEN__` in
-   `aurora/lib/aurora.cpp` — emdawnwebgpu intentionally unsupports it
-   (browser auto-presents).
-6. Rust `panic_unwind` shim at `web/unwind_shim.js` wired via
-   `--js-library` — nod's transitive deps emit `_Unwind_RaiseException`
-   imports even with workspace `panic=abort`.
-7. RmlUi `DepthStencilState` pinned to `depthWriteEnabled=False` +
-   `depthCompare=Undefined` (3 sites in `WebGPURenderInterface.cpp`) —
-   emdawnwebgpu's default differs from native Dawn for Stencil8 format.
-8. `WebGPURenderInterface::BeginLayerPass` `RenderPassDepthStencilAttachment`
-   explicitly initialized depth fields — uninit float read as NaN by JS bridge.
-9. `aurora.cpp begin_frame` reordered: `gfx::begin_frame()` (with its
-   yielding MapAsync wait) called BEFORE `g_surface.GetCurrentTexture()`
-   so browser doesn't reclaim the swapchain texture during the yield.
+**What's working end-to-end:** ISO upload → in-browser CISO conversion + SHA-1 verify
+→ wasm boot → Aurora WebGPU surface → JKRHeap + ARAM → 5 OSThreads created (their
+bodies silently no-op'd — see deferral below) → `fapGm_Create` → `cDyl_InitAsync` →
+`main01` loop → `fpcM_Management` cycles → RmlUi prelaunch UI renders → click input
+dispatches into the SDL event loop → UI advances.
 
-**Current state:** UI shows. The game loop runs cleanly with no abort.
-Some residual "Destroyed texture used in submit" WebGPU validation warnings
-(~24 per smoke session) — non-fatal, intermittent surface reacquisition
-loss. Worth chasing next but not blocking.
+**Hard requirement on the user side:** Chrome with hardware-accelerated WebGPU. If
+`chrome://gpu/` shows software-fallback (SwiftShader), the WebGPU Instance gets
+reclaimed mid-session and every MapAsync returns Aborted. Toggle "Use graphics
+acceleration when available" in `chrome://settings/system` on. This is a Chrome
+config requirement, not a fork bug.
 
-**What's still skipped:** the 5 game-side worker threads (DVD reader,
-MemCard, audio decode) are silently no-op'd by the OSResumeThread skip.
-Disc-streamed game content (movies, dialog audio, level data) won't
-appear until those have a cooperative scheduler. The prelaunch UI is
-rendering because it doesn't need disc I/O.
-
-## How to build, smoke-test, and iterate
+## Build, smoke, iterate
 
 ```powershell
 # One-time first build (slow — full cargo + emcc, ~25 min):
@@ -62,98 +39,114 @@ cmake --build --preset web-emscripten-fast
 # Inner-loop iteration (~6 min when one .cpp changes):
 cmake --build --preset web-emscripten-fast
 
-# Smoke-test against real Chrome via Puppeteer:
-#   1. Kill any stale python http servers (see gotchas below)
-#   2. Start http server in the build's web/ dir:
+# Smoke against a local build:
+Get-Process python | Stop-Process -Force        # always kill stale http servers first
 cd build/web-emscripten-fast/web
-python -m http.server 8081 --bind 127.0.0.1
-#   3. Run the headful smoke (in another shell):
+python -m http.server 8081 --bind 127.0.0.1     # in one shell
 cd tools/browser-smoke
 node smoke-import.mjs --headful http://127.0.0.1:8081/
+
+# Smoke against the live GH Pages deployment:
+node smoke-import.mjs --headful https://sh1ftmaker.github.io/dusk-wasm/
 ```
 
-The smoke output goes to `tools/browser-smoke/smoke-import-screenshot.png` plus
-stdout. Filter `OSResumeThread`, `Skipping native`, `Created thread`, `PAGEERROR`,
-`FATAL`, `aurora::ar`, `main01` for the interesting lines.
+Smoke output: `tools/browser-smoke/smoke-import-screenshot.png` (welcome dialog),
+`smoke-import-after-click.png` (controller prompt), plus full stdout console capture.
+Useful filters: `OSResumeThread`, `Skipping native`, `Created thread`, `PAGEERROR`,
+`FATAL`, `main01`, `Loaded game disc`, `fpcM_Management step=`.
 
-## The two presets
+## Two build presets
 
-- **`web-emscripten`** — RelWithDebInfo, embedded DWARF, ~197 MB wasm, 30–60 s
-  per relink. Use for source-stepping debug.
-- **`web-emscripten-fast`** — Release, no DWARF, ~32 MB wasm, ~6 min for an
-  incremental link of one .cpp change (binaryen runs full opt passes which now
-  matters; first link is slower but subsequent are faster). Use for iteration.
-  Function-name stack traces still work via `--profiling-funcs`.
+| Preset | Build type | DWARF | Wasm size | Use for |
+|---|---|---|---|---|
+| `web-emscripten` | RelWithDebInfo | embedded | ~197 MB | source-stepping in DevTools |
+| `web-emscripten-fast` | Release | none | ~32 MB | iteration; `--profiling-funcs` keeps function names in stack traces |
 
-## Critical gotchas (these will burn you again if you forget)
+CI (`.github/workflows/web.yml`) uses `web-emscripten` (full DWARF for upstream debugging).
 
-1. **Stale python http servers silently keep port 8081.** `python -m http.server`
-   doesn't error when the port is taken — it just exits silently. Your "new" server
-   is dead and Puppeteer talks to the OLD wasm. **Always run
-   `Get-Process python | Stop-Process -Force` before starting a new server.**
-2. **Chrome caches wasm aggressively.** The smoke test now sets
-   `page.setCacheEnabled(false)` (`tools/browser-smoke/smoke-import.mjs`); leave
-   that in.
-3. **Freetype upstream 502s intermittently** during first-time configure. Workaround
-   is to point a new build at an existing freetype source via
-   `-DFETCHCONTENT_SOURCE_DIR_FREETYPE=<path-to-existing>/freetype-src`.
-4. **Disabling RmlUi (`AURORA_ENABLE_RMLUI=OFF`) breaks the build** because dusk's
-   UI headers (`src/dusk/ui/event.hpp:3` and the 47-file `dusk::ui::*` family)
-   unconditionally include `<RmlUi/Core.h>`. Until that's refactored, RmlUi must
-   stay on. The depth/stencil validation errors it emits each frame are non-fatal
-   (downgraded from FATAL to ERROR in `extern/aurora/lib/webgpu/gpu.cpp`).
-5. **Emscripten compiles C++ with `-fno-exceptions` by default.** Aurora needs
-   `-fexceptions` at compile (already wired in `CMakeLists.txt`); changing this
-   silently elides every `try/catch` in the codebase.
-6. **Wasm needs explicit yields to JS or it monopolizes the browser.** Two
-   places already have `emscripten_sleep(0)`: top of `m_Do_main.cpp`'s `main01`
-   loop, and inside the `begin_frame` MapAsync wait spin in
-   `aurora/lib/gfx/common.cpp`. Any other busy-spin-with-async-callback patterns
-   in Aurora will need the same treatment — `g_instance.ProcessEvents()` alone
-   doesn't pump JS callbacks under wasm.
+## Five hard-won gotchas
 
-## What's next
+1. **Stale `python -m http.server` keeps port 8081 silently.** No error, just exits.
+   Subsequent runs talk to the OLD wasm. Always
+   `Get-Process python | Stop-Process -Force` before starting a new server.
+2. **Chrome caches wasm hard.** The smoke test sets `page.setCacheEnabled(false)` —
+   leave it.
+3. **Freetype upstream (savannah.gnu.org) 502s/timeouts intermittently.** CI works
+   around it via mirror fallback + `FETCHCONTENT_SOURCE_DIR_FREETYPE`; locally, point
+   a fresh build at an existing extracted source the same way.
+4. **`AURORA_ENABLE_RMLUI=OFF` breaks the build** — dusk's UI headers
+   (`src/dusk/ui/event.hpp:3` + 47-file `dusk::ui::*` family) unconditionally
+   `#include <RmlUi/Core.h>`. Until that's refactored, RmlUi stays on; the per-frame
+   depth/stencil validation noise is non-fatal (downgraded from FATAL to ERROR in
+   `extern/aurora/lib/webgpu/gpu.cpp`).
+5. **Wasm needs explicit yields to JS or it monopolises the tab.** Two yields in
+   place: top of `m_Do_main.cpp`'s `main01` loop, and inside `begin_frame`'s
+   MapAsync wait spin in `extern/aurora/lib/gfx/common.cpp`. Any other
+   busy-spin-with-async-callback pattern in Aurora will need the same —
+   `g_instance.ProcessEvents()` alone doesn't pump JS callbacks under wasm.
 
-The UI renders; the immediate blocker class (CFI mismatches, missing yields,
-emdawnwebgpu defaults) is resolved. The interesting work now:
+## Open work, by priority
 
-1. **Click through the prelaunch UI to start the actual game.** The smoke test
-   currently just observes; doesn't interact. Add a Puppeteer click on the
-   "Dusk" preset button + whatever comes next, then re-screenshot. Likely
-   reveals the next round of issues at the boundary into actual gameplay
-   (which will exercise the disabled DVD/MemCard/audio threads).
-2. **Cooperative thread scheduler.** Per `project_dusk_wasm_threading.md`,
-   three approaches in order of risk: Asyncify-yielding inline scheduler,
-   per-subsystem inline replacement (DVD reader synchronous), or real
-   `-pthread` build. Start with the Asyncify approach. This unblocks
-   anything past the prelaunch UI that needs disc I/O.
-3. **Fix intermittent "Destroyed texture used in submit" warnings.** ~24 per
-   session, non-fatal. The surface texture is occasionally being reclaimed
-   between begin_frame and end_frame. May be a race in the swapchain refresh
-   path. Lower priority since it doesn't block rendering.
-4. **Trim debug instrumentation.** `src/dusk/OSThread.cpp` (the
-   `>>> OSResumeThread` logs), `src/m_Do/m_Do_main.cpp` (`>>> main01 iter` logs),
-   `src/f_pc/f_pc_manager.cpp` (`>>> fpcM_Management step` logs), plus the
-   diagnostic `>>>` lines in aurora's gfx/, webgpu/, and aurora.cpp from
-   earlier sessions. Useful while iterating; trim when the port is stable.
+1. **Cooperative thread scheduler.** The five game-side worker threads (DVD,
+   MemCard, audio decode, ...) are silently no-op'd by the `OSResumeThread` skip
+   under emscripten. Anything past the prelaunch UI that needs disc I/O won't
+   advance until they run. Three viable paths:
+   - **Asyncify-yielding inline scheduler** *(recommended start)*. Run thread
+     bodies inline on the main thread; blocking primitives (`OSWaitCond`,
+     `OSReceiveMessage`, etc.) call `emscripten_sleep(0)`. Asyncify is already
+     wired (`-sASYNCIFY=1`). Every blocking primitive in `src/dusk/OSThread.cpp`
+     needs an Asyncify-aware variant.
+   - Per-subsystem inline replacement (DVD reader synchronous, etc.). Smaller
+     blast radius but loses concurrency.
+   - Real `-pthread` build with COOP/COEP headers via a service worker (GH Pages
+     can't set custom response headers natively). Biggest infra change.
+   See `~/.claude/projects/.../memory/project_dusk_wasm_threading.md` for the
+   detailed analysis.
+2. **Trim debug instrumentation** before this stops being a moving target. Files
+   with temporary `>>>`-prefixed `OSReport`/`Log.info` lines:
+   - `src/dusk/OSThread.cpp` (OSResumeThread, OSCreateThread)
+   - `src/m_Do/m_Do_main.cpp` (main01 iter)
+   - `src/f_pc/f_pc_manager.cpp` (fpcM_Management step=)
+   - `extern/aurora/lib/aurora.cpp`, `lib/gfx/common.cpp`,
+     `lib/gfx/depth_peek.cpp`, `lib/webgpu/gpu.cpp`
+   Useful while iterating; cut when the port stabilises.
+3. **Intermittent "Destroyed texture used in submit" warnings** (~14–24 per
+   session, non-fatal). The swapchain texture occasionally gets reclaimed
+   between `begin_frame` and `end_frame`. Probably a race in `refresh_surface`.
+   Lower priority — doesn't block rendering, but worth chasing for a clean log.
+4. **RmlUi proper depth/stencil fix.** Current fix pins
+   `depthWriteEnabled=False` for the Stencil8-format pipelines, which is
+   correct, but each frame still emits a validation warning. Investigate
+   whether the `DepthStencilState` should be `nullptr` instead of a populated
+   struct when the format is stencil-only.
 
-## Open instrumentation worth keeping or removing
+## CI (`.github/workflows/web.yml`)
 
-`src/dusk/OSThread.cpp` currently has temporary `OSReport(">>> OSResumeThread ...")`
-diagnostic logs and a per-thread `func=%p` annotation in `OSCreateThread`. Useful
-for tracing thread lifecycle during the cooperative-scheduler work; should be
-trimmed back to one-line per spawn before this is ready for v1 demo.
+Pushes to `wasm-port` trigger a single workflow that builds the
+`web-emscripten` preset on Ubuntu and deploys the result to GitHub Pages.
+Caches in place:
 
-`extern/aurora/lib/gfx/common.cpp`, `lib/gfx/depth_peek.cpp`, `lib/webgpu/gpu.cpp`,
-and `lib/aurora.cpp` also have `Log.info(">>> ...")` instrumentation from earlier
-sessions. Same story.
+- `~/.cargo/{registry,git}` keyed on `extern/aurora/cmake/AuroraNodProvider.cmake`
+- `build/web-emscripten/_deps` keyed on `extern/aurora/extern/CMakeLists.txt`
+  + Aurora Provider cmake files
+- sccache via `mozilla-actions/sccache-action` (Rust); ccache via
+  `hendrikmuhs/ccache-action` (C++). Both wrapped in `continue-on-error` +
+  probe-and-fallback so a GHA cache-service outage doesn't kill the run.
+- emsdk via `setup-emsdk`'s built-in `actions-cache-folder`.
 
-## Memory and notes layout
+Freetype is pre-fetched with `curl --retry` against savannah.gnu.org first then
+the GitLab/savannah mirrors, dropped into `_deps/freetype-src`; configure passes
+`FETCHCONTENT_SOURCE_DIR_FREETYPE` so the FetchContent step skips network entirely.
 
-Cross-session memory is at `~/.claude/projects/C--Users-shift-Desktop-dusk-wasm/memory/`.
-Three project memories currently live there:
-- `project_dusk_wasm_port.md` — points at this CLAUDE.md and the notes
-- `project_dusk_wasm_threading.md` — current threading state + the three options
+Pages environment has `wasm-port` added to its deployment-branch-policy
+(originally created targeting `main`, was 2-second instant-fail until I added the
+branch). Worth knowing if you ever rename the branch.
+
+## Cross-session memory layout
+
+`~/.claude/projects/C--Users-shift-Desktop-dusk-wasm/memory/`:
+- `MEMORY.md` — index
+- `project_dusk_wasm_port.md` — points at this CLAUDE.md + the notes
+- `project_dusk_wasm_threading.md` — current threading state + cooperative-scheduler options
 - `reference_emsdk_install.md` — emsdk activation under PowerShell exec policy
-- `feedback_parallel_agents.md` — user wants parallel general-purpose agents for
-  independent authoring work
+- `feedback_parallel_agents.md` — user prefers parallel general-purpose agents for independent authoring
