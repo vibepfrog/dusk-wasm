@@ -141,16 +141,10 @@
                 },
             }).then(function (result) {
                 // CISO is in MEMFS; main() was deferred via noInitialRun=true. We
-                // start it here directly — no reload needed. If persistence to
-                // IDBFS failed (Chrome's ~1 GB blob cap), warn the user that the
-                // import doesn't survive a reload but the game runs this session.
-                if (result && result.persisted === false) {
-                    setStatus('Loaded (this session only — your browser refused to ' +
-                              'persist the 1 GB disc image, so re-upload after reload).',
-                              false);
-                } else {
-                    setStatus('Loaded. Starting game.', false);
-                }
+                // start it here directly. The CISO is session-local — pre.js does
+                // not IDBFS-mount /iso (see comment there). Reloading the page
+                // clears it and the user re-uploads.
+                setStatus('Loaded. Starting game.', false);
                 setProgress(0, 0);
                 hideDropZone();
                 document.getElementById('canvas').focus();
@@ -271,19 +265,9 @@
             },
             onRuntimeInitialized: function () {
                 bootStatusEl.textContent = '';
-                try {
-                    var info = FS.analyzePath(window.duskIsoImport.CISO_OUT_PATH);
-                    if (info && info.exists) {
-                        // CISO present (returning user) — start the game.
-                        hideDropZone();
-                        document.getElementById('canvas').focus();
-                        Module.callMain();
-                    }
-                    // else: leave drop-zone visible; importIso will reload after
-                    // writing the CISO, and the second pass takes the branch above.
-                } catch (e) {
-                    console.warn('[dusk] CISO presence check / callMain failed:', e);
-                }
+                // The CISO is never persisted (see web/pre.js for why), so on
+                // every fresh page load the drop-zone is the entry point.
+                // startImport() handles callMain() once the upload completes.
             },
         };
         window.Module = Module;

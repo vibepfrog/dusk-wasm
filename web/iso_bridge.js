@@ -222,27 +222,16 @@
         var cisoBytes = await isoToCiso(file, callbacks.onProgress);
 
         phase('write');
-        // /iso is mounted as IDBFS by web/pre.js. Writing here populates MEMFS,
-        // which is enough for the game to run THIS session. syncfs(false) flushes
-        // MEMFS → IndexedDB so it survives reload — but Chrome's IndexedDB has a
-        // ~1 GB per-blob cap and TP's CISO is ~1054 MB, so this can fail with
-        // DataError: InvalidBlob. We treat persistence as best-effort: if it
-        // works the user can reload later; if not, they re-upload next session.
+        // /iso is plain MEMFS — pre.js intentionally does NOT mount it as
+        // IDBFS. Chrome's per-blob IndexedDB cap is ~1 GB and TP's CISO is
+        // ~1054 MB, so persistence either fails outright or (worse) silently
+        // truncates, which leaves a half-CISO that analyzePath reports as
+        // existing but iso::inspect rejects. The upload is session-local; the
+        // user re-uploads each session.
         FS.writeFile(CISO_OUT_PATH, cisoBytes);
-        var persisted = await new Promise(function (resolve) {
-            FS.syncfs(false, function (err) {
-                if (err) {
-                    console.warn('[iso_bridge] persistence failed (CISO stays in tab memory only): ' +
-                                 (err.message || err.name || err));
-                    resolve(false);
-                } else {
-                    resolve(true);
-                }
-            });
-        });
 
         phase('done');
-        return { cisoBytes: cisoBytes.length, isoBytes: file.size, persisted: persisted };
+        return { cisoBytes: cisoBytes.length, isoBytes: file.size };
     }
 
     window.duskIsoImport = {

@@ -53,7 +53,12 @@ resulting CISO is typically 5-15% the original size. TP is heavier than Animal C
 is identical between AC and TP), with a SHA-1 verify added against the EUR ISO hash
 `2601822a488eeb86fb89db16ca8f29c2c953e1ca` to refuse mismatched dumps.
 
-CISO is written to IDBFS at `/iso/dusk.ciso` and persisted via `FS.syncfs(false, ...)`.
+CISO is written to MEMFS at `/iso/dusk.ciso`. We intentionally do NOT IDBFS-mount `/iso`:
+Chrome's per-blob IndexedDB cap is ~1 GB and TP's CISO is ~1054 MB, so `syncfs` either
+errors or (worse) silently truncates the file, leaving a half-CISO that `analyzePath`
+reports as existing but `iso::inspect` rejects, stranding the user on the prelaunch UI
+with "No disc image found" and no obvious recovery (clearing HTTP cache leaves IndexedDB
+intact). The CISO is session-local — the user re-uploads after every page reload.
 Aurora's nod library natively reads CISO — no patches to `extern/nod` needed.
 
 ## Phase boundary at end of session 1
