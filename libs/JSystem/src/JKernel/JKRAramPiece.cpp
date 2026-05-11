@@ -55,10 +55,26 @@ JKRAMCommand* JKRAramPiece::orderAsync(int direction, uintptr_t source, uintptr_
     }
 #endif
 
+#ifdef __EMSCRIPTEN__
+    // Single-threaded wasm: the JKRAram thread (see JKRAram::run()) is
+    // silently no-op'd by the emscripten branch of OSResumeThread, so the
+    // queue post above would never be consumed. startDMA is what the thread
+    // would have called on this command; running it inline performs the DMA
+    // (memcpy on PC, see extern/aurora/lib/dolphin/AR.cpp::ARQPostRequest)
+    // and synchronously invokes doneDMA, which sends the completion to
+    // command->mMessageQueue. The message we'd have queued is unused under
+    // this path, so free it to avoid leaking once per ARAM transfer.
+    JKR_DELETE(message);
+    JKRAramPiece::startDMA(command);
+    if (command->mCallback != NULL) {
+        sAramPieceCommandList.append(&command->mPieceLink);
+    }
+#else
     OSSendMessage(&JKRAram::sMessageQueue, message, OS_MESSAGE_BLOCK);
     if (command->mCallback != NULL) {
         sAramPieceCommandList.append(&command->mPieceLink);
     }
+#endif
 
     unlock();
     return command;

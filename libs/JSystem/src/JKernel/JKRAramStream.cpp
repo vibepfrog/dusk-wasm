@@ -166,7 +166,21 @@ JKRAramStreamCommand* JKRAramStream::write_StreamToAram_Async(JSUFileInputStream
     }
 
     OSInitMessageQueue(&command->mMessageQueue, &command->mMessage, 1);
+#ifdef __EMSCRIPTEN__
+    // Single-threaded wasm: the JKRAramStream worker thread (see this file's
+    // run() loop) is silently no-op'd by the emscripten branch of
+    // OSResumeThread. writeToAram is what the thread would have called on
+    // receiving this command; running it inline at the submission site sends
+    // the "done" message to command->mMessageQueue, so the caller's
+    // JKRAramStream::sync() OSReceiveMessage returns instead of blocking
+    // forever. ARQPostRequest is already a synchronous memcpy on PC (see
+    // extern/aurora/lib/dolphin/AR.cpp), and JKRAramPiece::orderAsync gets
+    // the same inline treatment in its own file, so the call chain settles
+    // without ever touching the dead worker threads.
+    writeToAram(command);
+#else
     OSSendMessage(&sMessageQueue, command, OS_MESSAGE_BLOCK);
+#endif
     return command;
 }
 

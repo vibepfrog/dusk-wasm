@@ -1499,6 +1499,7 @@ void dScnLogo_c::dvdDataLoad() {
 
     OS_REPORT("\x1b[32m%d archiveHeap->getTotalFreeSize %08x\n\x1b[m", 2436, archiveHeap->getTotalFreeSize());
 
+    DuskLog.debug("dvdDataLoad: post-Alink/Always, starting aramMount sequence");
     mpField0Command = aramMount("/res/FieldMap/Field0.arc", mDoExt_getJ2dHeap());
     mpAlAnmCommand = aramMount("/res/Object/AlAnm.arc", NULL);
     mpFmapResCommand = aramMount(FMAP_RES_PATH, mDoExt_getJ2dHeap());
