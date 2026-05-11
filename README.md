@@ -2,13 +2,55 @@
   <img src="res/logo-mascot.png" alt="Logo" width="640">
 
   <p align="center">
-    <a href="https://twilitrealm.dev">Official Website</a>
+    <a href="https://twilitrealm.dev">Official Website (upstream)</a>
     •
-    <a href="https://discord.gg/dusktp">Discord</a>
+    <a href="https://discord.gg/dusktp">Discord (upstream)</a>
+    •
+    <a href="https://sh1ftmaker.github.io/dusk-wasm/">Live build (this fork)</a>
   </p>
 </div>
 
-# Overview
+> [!WARNING]
+> **This is an unofficial fork.** It adds a WebAssembly target so Dusk runs
+> in a Chromium-based browser via WebGPU. It is **not affiliated with, endorsed
+> by, or supported by [TwilitRealm](https://github.com/TwilitRealm) or the
+> upstream Dusk project**. Bug reports about the web build should be filed
+> against this repo's issues, not the upstream — please do not bother the
+> upstream maintainers with port-specific problems.
+>
+> Upstream lives at **https://github.com/TwilitRealm/dusk**. If you want the
+> stable, supported desktop builds, go there. This fork is experimental.
+
+# WebAssembly port
+
+This branch (`wasm-port`) builds a single static page that boots Dusk in any
+modern Chromium-based browser after a one-time EUR ISO upload. The wasm
+bundle, JS shell, and packed assets are published to GitHub Pages at
+**https://sh1ftmaker.github.io/dusk-wasm/** on every push to `wasm-port`.
+
+How it works:
+
+- The original Aurora (GX → WebGPU translator) is vendored under
+  `extern/aurora/` and points at the browser's WebGPU API via
+  [emdawnwebgpu](https://github.com/google/dawn/tree/main/third_party/emdawnwebgpu).
+- The Rust portions (`nod` for disc parsing) target
+  `wasm32-unknown-emscripten` via Corrosion.
+- The C++ port follows the dusk-decomp source unchanged where possible;
+  wasm-specific touchpoints (`OSResumeThread` thread-spawn skips, main-loop
+  `emscripten_sleep(0)` yields, function-pointer signature widenings for
+  wasm CFI, RmlUi depth/stencil pinning) are documented in
+  [`docs/wasm-port-notes.md`](docs/wasm-port-notes.md) and
+  [`CLAUDE.md`](CLAUDE.md).
+
+Current state (2026-05): boots through Aurora init, WebGPU surface
+configured, reaches the prelaunch "WELCOME TO DUSK" preset selection UI,
+click input works (`Classic`/`Dusk` buttons), advances to the controller
+assignment screen. Disc-streamed game content (movies, scripted audio,
+level data) does not yet load because the worker threads are
+silently no-op'd on emscripten without `-pthread` — see
+`docs/wasm-port-notes.md` for the cooperative-scheduler plan.
+
+# Upstream Overview
 
 Dusk is a reverse-engineered reimplementation of Twilight Princess.
 
