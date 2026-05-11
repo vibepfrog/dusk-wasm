@@ -9,6 +9,11 @@
 #include <cstring>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+// Defined in extern/aurora/lib/aurora.cpp. Called once per main01 iter
+// (top of the loop body, before the emscripten_sleep yield) so aurora's
+// frame_diag can measure iter-to-iter wall time and dump a periodic
+// FPS / heap summary. extern "C" must live at namespace scope.
+extern "C" void aurora_frame_diag_iter_tick() noexcept;
 #endif
 #include "DynamicLink.h"
 #include "JSystem/JAudio2/JASAudioThread.h"
@@ -261,7 +266,6 @@ void main01(void) {
         // call delimits a complete iter (including the yield + any `continue`
         // short-circuits). aurora's frame_diag prints an aggregated summary
         // every 60 iters: FPS, min/avg/max iter time, last submit window, heap.
-        extern "C" void aurora_frame_diag_iter_tick() noexcept;
         aurora_frame_diag_iter_tick();
 #endif
 #if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
