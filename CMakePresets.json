@@ -524,7 +524,6 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/Toolchain-emscripten.cmake",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install-web",
-        "CMAKE_AR": "${sourceDir}/tools/emar_pyshim.exe",
         "Rust_CARGO_TARGET": "wasm32-unknown-emscripten",
         "Rust_RUSTUP_INSTALL_MISSING_TARGET": {
           "type": "BOOL",

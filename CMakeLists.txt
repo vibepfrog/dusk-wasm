@@ -102,22 +102,21 @@ if (CMAKE_SYSTEM_NAME STREQUAL Linux)
 endif ()
 
 if (EMSCRIPTEN)
-  # emsdk's Emscripten.cmake toolchain sets CMAKE_AR to emar.bat as a normal
-  # (non-cache) variable, so it shadows our cache override in every scope where
-  # project() re-runs the toolchain. cargo's cc-rs spawns AR directly with full
-  # argv; .bat scripts go through cmd.exe whose parsing limit is ~8190 chars,
-  # and liblzma-sys/libz-sys/zstd-sys/bzip2-sys ar invocations exceed that.
-  # Skip emar.bat and use emsdk's bundled llvm-ar.exe directly — it's a real
-  # .exe, no cmd.exe involved, and emar.py adds nothing critical for plain
-  # static-archive creation (it mostly handles LTO bitcode bookkeeping which
-  # we don't use). Force CACHE + unset local so the cache wins in this scope.
-  if (NOT DEFINED ENV{EMSDK})
-    message(FATAL_ERROR "EMSDK env var not set; activate emsdk before configuring.")
+  # CMAKE_HOST_WIN32 only — on Windows, emsdk's Emscripten.cmake toolchain
+  # sets CMAKE_AR to emar.bat, which routes through cmd.exe. cmd.exe's
+  # ~8190-char argv limit gets hit by cargo's cc-rs invoking AR for
+  # liblzma-sys/libz-sys/zstd-sys/bzip2-sys static archives. Bypass to the
+  # bundled llvm-ar.exe (real PE binary, no cmd.exe involved). On Linux/macOS
+  # emar is a shell script with no such limit — emcc's default works fine.
+  if (CMAKE_HOST_WIN32)
+    if (NOT DEFINED ENV{EMSDK})
+      message(FATAL_ERROR "EMSDK env var not set; activate emsdk before configuring.")
+    endif ()
+    set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar.exe" CACHE FILEPATH
+        "Use emsdk's bundled llvm-ar instead of emar.bat (avoids cmd.exe argv limit)" FORCE)
+    unset(CMAKE_AR)
+    set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar.exe")
   endif ()
-  set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar.exe" CACHE FILEPATH
-      "Use emsdk's bundled llvm-ar instead of emar.bat (avoids cmd.exe argv limit)" FORCE)
-  unset(CMAKE_AR)
-  set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar.exe")
 
   # emcc compiles C++ with exceptions DISABLED by default — every try/catch is
   # elided and throws unwind straight past them to JS as uncaught CppException.
