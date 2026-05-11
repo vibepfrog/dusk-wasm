@@ -46,12 +46,44 @@ jobs:
       # addressable cache backed by the GitHub Actions cache service.
       # Net result: first build downloads + compiles ~250 crates (nod's deps);
       # subsequent builds reuse the cached .rlibs and finish in seconds.
+      # `continue-on-error` so a GHA cache-service outage doesn't kill the run;
+      # the probe step below detects that and falls back to no caching.
       - name: Setup sccache (Rust compile cache)
+        id: sccache-setup
+        continue-on-error: true
         uses: mozilla-actions/sccache-action@v0.0.6
+
+      # GHA's artifact-cache service intermittently returns 400 with
+      # "Our services aren't available right now" (~Azure outage). When that
+      # happens, sccache's server fails to start on first use and every cargo
+      # invocation fails with exit 101. Probe sccache here — if the cache
+      # backend is unreachable, unset RUSTC_WRAPPER so rustc runs directly
+      # (slower this run, but build completes).
+      - name: Probe sccache (disable if GHA cache backend is down)
+        if: steps.sccache-setup.outcome == 'success'
+        run: |
+          if sccache --start-server 2>&1; then
+            echo "sccache server started OK"
+            sccache --show-stats || true
+          else
+            echo "::warning::sccache server failed to start — likely GHA cache outage; disabling RUSTC_WRAPPER for this run"
+            echo "RUSTC_WRAPPER=" >> $GITHUB_ENV
+            echo "SCCACHE_GHA_ENABLED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Disable sccache entirely if setup failed
+        if: steps.sccache-setup.outcome != 'success'
+        run: |
+          echo "::warning::sccache action failed to set up; disabling RUSTC_WRAPPER"
+          echo "RUSTC_WRAPPER=" >> $GITHUB_ENV
+          echo "SCCACHE_GHA_ENABLED=false" >> $GITHUB_ENV
 
       # ccache wraps clang/emcc so each .o is cached by source-hash. Saves
       # the bulk of the ~6m C++ compile when only a handful of files change.
+      # continue-on-error so a cache outage doesn't kill the run; ccache itself
+      # works fine without the cache backend, just won't have pre-warmed state.
       - name: Setup ccache (C++ compile cache)
+        continue-on-error: true
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ccache-${{ runner.os }}-web
