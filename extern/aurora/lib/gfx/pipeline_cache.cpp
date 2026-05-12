@@ -52,6 +52,24 @@ constexpr size_t BuildPipelinesPerFrame = 5;
 #else
 constexpr size_t BuildPipelinesPerFrame = 1;
 #endif
+
+#ifdef __EMSCRIPTEN__
+// Pipeline-cache diagnostic counters. The web build has no worker thread
+// (Skipping pipeline cache writer thread (emscripten, no -pthread)),
+// so pipelines queued past the per-frame budget would never get built
+// without the end-of-frame drain below. These counters let us correlate
+// bind_pipeline failures (silent draw skips → garbled menu text) with
+// pending-pipeline count, so we know whether the fix is actually
+// emptying the queue.
+namespace diag {
+uint64_t total_bind_failures = 0;
+uint64_t total_pipelines_created = 0;
+uint64_t bind_failures_this_frame = 0;
+uint64_t pipelines_created_this_frame = 0;
+uint64_t pipelines_drained_this_frame = 0;
+uint32_t frames_since_summary = 0;
+}
+#endif
 static std::thread g_pipelineThread;
 static std::atomic_bool g_pipelineThreadEnd = false;
 static std::condition_variable g_pipelineCv;
@@ -175,6 +193,10 @@ static PipelineRef find_pipeline_impl(ShaderType type, const PipelineConfig& con
         }
         ++g_pipelinesPerFrame;
         ++createdPipelines;
+#ifdef __EMSCRIPTEN__
+        ++diag::pipelines_created_this_frame;
+        ++diag::total_pipelines_created;
+#endif
       } else {
         auto& targetQueue = g_pipelineFrameActive ? g_priorityPipelines : g_backgroundPipelines;
         targetQueue.emplace_back(PendingPipeline{
@@ -647,17 +669,89 @@ void begin_pipeline_frame() {
   }
 }
 
+#ifdef __EMSCRIPTEN__
+// Drain every still-queued pipeline at the end of this frame. The plain
+// pipeline_worker caps at BuildPipelinesPerFrame; that cap makes sense
+// when a real worker thread continues compiling between frames, but on
+// emscripten that thread doesn't exist, so anything remaining queued
+// here stays queued indefinitely — find_pipeline returns a hash whose
+// get_pipeline() then fails, and every draw call using it is silently
+// dropped (visible as garbled / partially-missing menu text and
+// glyphs). Force-build everything; the alternative is permanently
+// broken rendering for the pipelines that didn't fit in the budget.
+static void drain_all_pending_pipelines_emscripten() {
+  while (true) {
+    PendingPipeline pending;
+    {
+      std::lock_guard lock{g_pipelineMutex};
+      if (g_priorityPipelines.empty() && g_backgroundPipelines.empty()) {
+        return;
+      }
+      auto& source = !g_priorityPipelines.empty() ? g_priorityPipelines : g_backgroundPipelines;
+      pending = std::move(source.front());
+      source.pop_front();
+    }
+    auto result = pending.create();
+    {
+      std::lock_guard lock{g_pipelineMutex};
+      g_pipelines.try_emplace(pending.hash, CachedPipeline{
+                                                .pipeline = std::move(result),
+                                                .firstFrameUsed = pending.firstFrameUsed,
+                                            });
+      g_pendingPipelines.erase(pending.hash);
+    }
+    ++createdPipelines;
+    --queuedPipelines;
+    ++diag::pipelines_drained_this_frame;
+    ++diag::total_pipelines_created;
+  }
+}
+#endif
+
 void end_pipeline_frame() {
   g_pipelineFrameActive = false;
   if (!g_hasPipelineThread) {
     pipeline_worker();
+#ifdef __EMSCRIPTEN__
+    // Worker stopped at BuildPipelinesPerFrame; force-drain the rest so
+    // no pipeline stays in g_pendingPipelines forever.
+    drain_all_pending_pipelines_emscripten();
+#endif
   }
+#ifdef __EMSCRIPTEN__
+  // Periodic summary so we can see whether the drain is working —
+  // bind failures should drop to zero once the queue is empty and stay
+  // there for steady-state gameplay.
+  if (++diag::frames_since_summary >= 60) {
+    diag::frames_since_summary = 0;
+    size_t pending_after = 0;
+    {
+      std::lock_guard lock{g_pipelineMutex};
+      pending_after = g_priorityPipelines.size() + g_backgroundPipelines.size();
+    }
+    if (diag::bind_failures_this_frame > 0 || diag::pipelines_created_this_frame > 0 ||
+        diag::pipelines_drained_this_frame > 0) {
+      Log.info("[PipelineDiag] this_period: built={} drained_at_eof={} bind_fails={}"
+               " | totals: built={} bind_fails={} | pending_now={}",
+               diag::pipelines_created_this_frame, diag::pipelines_drained_this_frame,
+               diag::bind_failures_this_frame, diag::total_pipelines_created,
+               diag::total_bind_failures, pending_after);
+    }
+    diag::pipelines_created_this_frame = 0;
+    diag::pipelines_drained_this_frame = 0;
+    diag::bind_failures_this_frame = 0;
+  }
+#endif
 }
 
 bool get_pipeline(PipelineRef ref, wgpu::RenderPipeline& pipeline) {
   std::lock_guard guard{g_pipelineMutex};
   const auto it = g_pipelines.find(ref);
   if (it == g_pipelines.end()) {
+#ifdef __EMSCRIPTEN__
+    ++diag::bind_failures_this_frame;
+    ++diag::total_bind_failures;
+#endif
     return false;
   }
   pipeline = it->second.pipeline;
