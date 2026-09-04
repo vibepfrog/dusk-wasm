@@ -578,6 +578,14 @@ if (EMSCRIPTEN)
         # heaps lower; 2 GB is safe across Chrome/Edge/Safari/Firefox.
         -sMAXIMUM_MEMORY=2147483648
         -sSTACK_SIZE=5242880
+        # Aurora creates the WebGPU adapter and device through synchronous
+        # WaitAny() calls. Browser WebGPU resolves those operations with JS
+        # promises, so the pthread build still needs Asyncify to suspend and
+        # resume this call chain while the promises settle. Pthreads provide
+        # parallelism; they do not replace this async bridge.
+        -sASYNCIFY=1
+        # Aurora's initialization and command-processor call chains are deep.
+        -sASYNCIFY_STACK_SIZE=4194304
         -sEXIT_RUNTIME=0
         -sFORCE_FILESYSTEM=1
         # Required for FS.syncfs() against /save — see web/pre.js.

@@ -7,6 +7,13 @@ preloaded pthread workers, WebGPU, and a bounded browser disc stream. Static and
 Node regression tests pass. A real browser run with a user-owned disc image is
 the next validation step.
 
+The pthread runtime also retains Asyncify with a 4 MiB unwind stack. Aurora's
+WebGPU startup uses synchronous `WaitAny()` calls for the browser's asynchronous
+adapter and device requests; without Asyncify, emdawnwebgpu rejects the requested
+`TimedWaitAny` instance feature before it can create the adapter. Pthreads are
+used for parallel game work and synchronous `FileReaderSync` disc access, but do
+not replace that JavaScript-promise suspension bridge.
+
 ## Pinned toolchain
 
 - Emscripten `5.0.6`

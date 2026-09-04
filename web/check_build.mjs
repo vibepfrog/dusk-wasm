@@ -44,13 +44,22 @@ for (const name of expected) {
 }
 
 if (sizes['index.wasm']) {
-    const head = readFileSync(join(buildDir, 'index.wasm')).subarray(0, 8);
+    const wasm = readFileSync(join(buildDir, 'index.wasm'));
+    const head = wasm.subarray(0, 8);
     const magicOk = head[0] === 0x00 && head[1] === 0x61 && head[2] === 0x73 && head[3] === 0x6d;
     const versionOk = head[4] === 0x01 && head[5] === 0 && head[6] === 0 && head[7] === 0;
     if (!magicOk) fail('index.wasm does not start with wasm magic bytes');
     else ok('wasm magic bytes correct');
     if (!versionOk) fail('index.wasm is not version 1');
     else ok('wasm version 1');
+
+    // Aurora uses synchronous WebGPU WaitAny() during adapter/device startup.
+    // Emdawnwebgpu can only provide that bridge when Asyncify or JSPI is
+    // enabled. This build deliberately uses Asyncify because JSPI is not yet
+    // available in every target browser and conflicts with our exception mode.
+    const asyncifyMarker = Buffer.from('asyncify_start_unwind');
+    if (!wasm.includes(asyncifyMarker)) fail('index.wasm is missing Asyncify support required by WebGPU WaitAny');
+    else ok('Asyncify WebGPU wait support present');
 }
 
 if (sizes['index.html']) {
