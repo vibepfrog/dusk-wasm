@@ -36,11 +36,12 @@ jobs:
       - uses: actions/checkout@v4
 
       # ── Toolchain setup ────────────────────────────────────────────────
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Add wasm32-unknown-emscripten Rust target
-        run: rustup target add wasm32-unknown-emscripten
+      - name: Setup pinned Rust nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-09-01
+          targets: wasm32-unknown-emscripten
+          components: rust-src
 
       # sccache wraps rustc so each compiled crate ends up in a content-
       # addressable cache backed by the GitHub Actions cache service.
@@ -118,7 +119,7 @@ jobs:
         id: deps-cache
         uses: actions/cache@v4
         with:
-          path: build/web-emscripten/_deps
+          path: build/web-emscripten-fast/_deps
           key: fc-deps-${{ runner.os }}-emsdk5.0.6-${{ hashFiles('extern/aurora/extern/CMakeLists.txt', 'extern/aurora/cmake/Aurora*Provider.cmake') }}
           restore-keys: |
             fc-deps-${{ runner.os }}-emsdk5.0.6-
@@ -132,7 +133,7 @@ jobs:
       # populated freetype-src, this step is a no-op.
       - name: Pre-fetch freetype with mirror fallback
         run: |
-          FT_SRC_DIR="build/web-emscripten/_deps/freetype-src"
+          FT_SRC_DIR="build/web-emscripten-fast/_deps/freetype-src"
           if [ -f "$FT_SRC_DIR/CMakeLists.txt" ]; then
             echo "freetype source already present (from cache) — skip fetch"
             exit 0
@@ -173,39 +174,33 @@ jobs:
           rm ft.tar.gz
           ls "$FT_SRC_DIR" | head -10
 
-      # The web-emscripten preset declares source/binary dirs and cache
+      # The web-emscripten-fast preset declares source/binary dirs and cache
       # variables — don't pass -S/-B here or we'll fight the preset.
       # FETCHCONTENT_SOURCE_DIR_FREETYPE points at our pre-fetched source so
       # FetchContent skips the network step entirely.
       # CMake's *_COMPILER_LAUNCHER prefixes every compile with `ccache`,
       # which means each emcc invocation is hashed (input + flags) and
-      # served from cache if seen before. The web-emscripten preset doesn't
+      # served from cache if seen before. The web-emscripten-fast preset doesn't
       # set these (it inherits relwithdebinfo, not ci), so pass them here.
       # We use ccache for the C++ wrapper and rely on RUSTC_WRAPPER=sccache
       # (env above) for the Rust crates.
       - name: Configure
         run: |
-          emcmake cmake --preset web-emscripten \
-            -DFETCHCONTENT_SOURCE_DIR_FREETYPE=${{ github.workspace }}/build/web-emscripten/_deps/freetype-src \
+          emcmake cmake --preset web-emscripten-fast \
+            -DFETCHCONTENT_SOURCE_DIR_FREETYPE=${{ github.workspace }}/build/web-emscripten-fast/_deps/freetype-src \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
-        run: cmake --build --preset web-emscripten
+        run: cmake --build --preset web-emscripten-fast --parallel
 
-      # Sanity-check the four artifacts the loader expects before we ship
+      # Sanity-check the threaded bundle before we ship
       # anything to Pages; a missing .data or .wasm would still "deploy"
       # but break at runtime with an opaque fetch error.
       - name: Verify build output
         run: |
-          set -e
-          for f in index.html index.js index.wasm index.data iso_bridge.js; do
-            if [ ! -f "build/web-emscripten/web/$f" ]; then
-              echo "::error::Missing expected build output: build/web-emscripten/web/$f"
-              exit 1
-            fi
-          done
-          ls -lh build/web-emscripten/web/
+          node web/check_build.mjs build/web-emscripten-fast/web
+          ls -lh build/web-emscripten-fast/web/
 
       # Print cache stats so the run summary shows hit-rates and we can tell
       # at a glance whether sccache/ccache actually helped this build.
@@ -220,7 +215,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/web-emscripten/web
+          path: build/web-emscripten-fast/web
 
   deploy:
     needs: build

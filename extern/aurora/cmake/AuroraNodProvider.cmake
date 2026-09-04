@@ -49,13 +49,13 @@ if (_aurora_nod_provider STREQUAL "vendor")
       # AND no exception metadata, which is what we want for a game build.
       set(ENV{CARGO_PROFILE_RELEASE_PANIC} "abort")
 
-      # Disable nod's `threading` feature on emscripten — it spawns a disc
-      # preloader background thread (nod/src/disc/preloader.rs:256). Without
-      # -pthread that thread spawn panics with "Os{kind:Unsupported}" and the
-      # process aborts the moment dusk opens the disc. With threading off, nod
-      # reads sectors synchronously from the calling thread; slower but works
-      # without the COOP/COEP-required pthread runtime.
-      set(NOD_THREADING OFF CACHE BOOL "Disable nod preloader thread on emscripten" FORCE)
+      # Build nod's preloader onto the same Emscripten shared-memory runtime as
+      # the engine. Rust's distributed wasm std lacks atomics, so Corrosion
+      # rebuilds it below with the pinned nightly toolchain.
+      set(NOD_THREADING ON CACHE BOOL "Enable nod preloader thread on emscripten" FORCE)
+      set(ENV{RUSTFLAGS} "-C target-feature=+atomics,+bulk-memory,+mutable-globals")
+      set(ENV{CFLAGS_wasm32_unknown_emscripten} "-pthread")
+      set(ENV{CXXFLAGS_wasm32_unknown_emscripten} "-pthread")
     endif ()
 
     # Corrosion may default to the host Rust target triple (commonly x86_64 on
@@ -85,6 +85,17 @@ if (_aurora_nod_provider STREQUAL "vendor")
     )
 
     FetchContent_MakeAvailable(aurora_nod)
+    if (EMSCRIPTEN)
+      corrosion_set_cargo_flags(nod "-Zbuild-std=std,panic_abort")
+      # set(ENV) affects CMake's configure process only. Persist these values on
+      # the Corrosion target so they are present in Ninja's later Cargo command.
+      corrosion_set_env_vars(nod
+        "CARGO_PROFILE_RELEASE_PANIC=abort"
+        "RUSTFLAGS=-C target-feature=+atomics,+bulk-memory,+mutable-globals"
+        "CFLAGS_wasm32_unknown_emscripten=-pthread"
+        "CXXFLAGS_wasm32_unknown_emscripten=-pthread"
+      )
+    endif ()
     set(BUILD_SHARED_LIBS "${_aurora_nod_saved_bsl}")
     unset(_aurora_nod_saved_bsl)
     if (NOT TARGET nod::nod)

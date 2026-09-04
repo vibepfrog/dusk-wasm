@@ -1,5 +1,9 @@
 # Dusk WebAssembly Port — Working Notes
 
+> **Update:** [`pthread-spike.md`](pthread-spike.md) supersedes the historical
+> Asyncify and whole-file ISO-ingestion sections below. The current build uses
+> pthreads with shared memory and streams ISO/GCM/CISO data in bounded reads.
+
 These notes track decisions, pinned versions, and known constraints for the WASM/browser
 port. The strategic plan and phase boundaries live in `../../PLAN.md` (workspace root).
 

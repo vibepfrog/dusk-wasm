@@ -1,35 +1,20 @@
 #!/usr/bin/env node
-/* check_build.mjs — post-build smoke check for the WASM bundle.
- *
- * Run: node dusk/web/check_build.mjs [build-dir]
- *      default build-dir = dusk/build/web-emscripten/web
- *
- * Verifies the four artifacts emcc produces are present and shaped the way the
- * runtime expects: wasm starts with the magic bytes, the HTML shell had its
- * {{{ SCRIPT }}} placeholder substituted, the canvas + drop-zone wiring is
- * intact, and iso_bridge.js was copied alongside by the POST_BUILD command.
- *
- * Exits 0 on success, non-zero on any check failure. CI uses this as the
- * verify step in .github/workflows/web.yml.
- */
+/* Post-build smoke checks for the threaded WebAssembly bundle. */
 import { readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
-
-const buildDir = resolve(process.argv[2] || join(__dirname, '..', 'build', 'web-emscripten', 'web'));
-
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const buildDir = resolve(process.argv[2] || join(__dirname, '..', 'build', 'web-emscripten-fast', 'web'));
 const failures = [];
-function fail(msg) { failures.push(msg); console.error('FAIL: ' + msg); }
-function ok(msg)   { console.log('ok:   ' + msg); }
 
-function bytes(n) {
-    if (n > 1e9) return (n / 1e9).toFixed(2) + ' GB';
-    if (n > 1e6) return (n / 1e6).toFixed(2) + ' MB';
-    if (n > 1e3) return (n / 1e3).toFixed(2) + ' KB';
-    return n + ' B';
+function fail(message) { failures.push(message); console.error('FAIL: ' + message); }
+function ok(message) { console.log('ok:   ' + message); }
+function bytes(value) {
+    if (value > 1e9) return (value / 1e9).toFixed(2) + ' GB';
+    if (value > 1e6) return (value / 1e6).toFixed(2) + ' MB';
+    if (value > 1e3) return (value / 1e3).toFixed(2) + ' KB';
+    return value + ' B';
 }
 
 console.log('check_build: build dir = ' + buildDir);
@@ -38,100 +23,116 @@ if (!existsSync(buildDir)) {
     process.exit(1);
 }
 
-/* ── 1. All four artifacts exist with non-zero size ─────────────────── */
-
-const expected = ['index.html', 'index.js', 'index.wasm', 'index.data', 'iso_bridge.js'];
+const expected = [
+    'index.html', 'index.js', 'index.wasm', 'index.data',
+    'iso_bridge.js', 'coi-serviceworker.js', '_headers',
+];
 const sizes = {};
 for (const name of expected) {
-    const p = join(buildDir, name);
-    if (!existsSync(p)) {
-        fail(`missing artifact: ${name}`);
+    const path = join(buildDir, name);
+    if (!existsSync(path)) {
+        fail('missing artifact: ' + name);
         continue;
     }
-    const s = statSync(p);
-    if (s.size === 0) {
-        fail(`zero-byte artifact: ${name}`);
+    const size = statSync(path).size;
+    if (size === 0) {
+        fail('zero-byte artifact: ' + name);
         continue;
     }
-    sizes[name] = s.size;
-    ok(`${name.padEnd(15)} ${bytes(s.size)}`);
+    sizes[name] = size;
+    ok(name.padEnd(15) + ' ' + bytes(size));
 }
-
-/* ── 2. wasm magic bytes ────────────────────────────────────────────── */
 
 if (sizes['index.wasm']) {
     const head = readFileSync(join(buildDir, 'index.wasm')).subarray(0, 8);
-    // Magic is "\0asm" (0x00 0x61 0x73 0x6d) followed by 4 little-endian
-    // version bytes; version 1 = 0x01 0x00 0x00 0x00.
-    const magicOk =
-        head[0] === 0x00 && head[1] === 0x61 && head[2] === 0x73 && head[3] === 0x6d;
-    const versionOk =
-        head[4] === 0x01 && head[5] === 0x00 && head[6] === 0x00 && head[7] === 0x00;
-    if (!magicOk) fail('index.wasm does not start with wasm magic bytes (\\0asm)');
+    const magicOk = head[0] === 0x00 && head[1] === 0x61 && head[2] === 0x73 && head[3] === 0x6d;
+    const versionOk = head[4] === 0x01 && head[5] === 0 && head[6] === 0 && head[7] === 0;
+    if (!magicOk) fail('index.wasm does not start with wasm magic bytes');
     else ok('wasm magic bytes correct');
-    if (!versionOk) fail(`index.wasm version bytes unexpected: ${[...head.subarray(4,8)].map(b=>b.toString(16)).join(' ')}`);
+    if (!versionOk) fail('index.wasm is not version 1');
     else ok('wasm version 1');
 }
 
-/* ── 3. HTML shell template substitution + key wiring ───────────────── */
-
 if (sizes['index.html']) {
     const html = readFileSync(join(buildDir, 'index.html'), 'utf8');
+    if (html.includes('{{{ SCRIPT }}}')) fail('shell script placeholder was not substituted');
+    else ok('shell script placeholder substituted');
 
-    if (html.includes('{{{ SCRIPT }}}')) {
-        fail('index.html still contains the un-substituted {{{ SCRIPT }}} token');
-    } else {
-        ok('shell {{{ SCRIPT }}} placeholder substituted');
-    }
+    if (!/<canvas[^>]*\bid=(?:["']canvas["']|canvas(?:\s|>))/i.test(html)) {
+        fail('index.html is missing the canvas id');
+    } else ok('canvas id present');
 
-    // Canvas ID is what BackendBinding.cpp's SurfaceSourceCanvasHTMLSelector
-    // selects ("#canvas"); a missing id="canvas" silently breaks WebGPU.
-    if (!/<canvas[^>]*\bid=["']canvas["']/i.test(html)) {
-        fail('index.html missing <canvas id="canvas">');
-    } else {
-        ok('canvas id="canvas" present');
-    }
+    if (!html.includes('iso_bridge.js')) fail('shell does not reference iso_bridge.js');
+    else ok('shell references iso_bridge.js');
+    if (!html.includes('coi-serviceworker.js')) fail('shell does not reference the isolation fallback');
+    else ok('shell references the isolation fallback');
+    if (!/index\.js/i.test(html)) fail('shell does not reference index.js');
+    else ok('shell references index.js');
 
-    // The shell must reference iso_bridge.js so the file picker can call it.
-    if (!html.includes('iso_bridge.js')) {
-        fail('index.html does not reference iso_bridge.js');
-    } else {
-        ok('shell references iso_bridge.js');
-    }
+    if (!html.includes('crossOriginIsolated') || !html.includes('SharedArrayBuffer')) {
+        fail('shell is missing the cross-origin isolation runtime guard');
+    } else ok('cross-origin isolation runtime guard present');
+}
 
-    // emcc's loader appends a script tag for index.js where {{{ SCRIPT }}} was.
-    if (!/index\.js/i.test(html)) {
-        fail('index.html does not reference index.js (script tag substitution looks broken)');
-    } else {
-        ok('shell references index.js');
+if (sizes['coi-serviceworker.js']) {
+    const worker = readFileSync(join(buildDir, 'coi-serviceworker.js'), 'utf8');
+    for (const header of [
+        'Cross-Origin-Opener-Policy',
+        'Cross-Origin-Embedder-Policy',
+        'Cross-Origin-Resource-Policy',
+    ]) {
+        if (!worker.includes(header)) fail('isolation worker is missing ' + header);
+        else ok('isolation worker sets ' + header);
     }
 }
 
-/* ── 4. iso_bridge.js sanity (the runtime gate for first import) ────── */
+if (sizes['index.js']) {
+    const loader = readFileSync(join(buildDir, 'index.js'), 'utf8');
+    const sharedMemory = /new WebAssembly\.Memory\(\{[^}]*["']?shared["']?\s*:\s*(?:true|!0)\b[^}]*\}\)/.test(loader);
+    if (!sharedMemory) fail('loader does not construct shared WebAssembly.Memory');
+    else ok('loader constructs shared WebAssembly.Memory');
+
+    if (!loader.includes('new Worker(pthreadMainJs') || !loader.includes('PThread')) {
+        fail('loader is missing the pthread worker bootstrap');
+    } else ok('pthread worker bootstrap present');
+
+    const boundedMarkers = ['BroadcastChannel', '__duskDiscFile', 'FileReaderSync', '4194304'];
+    for (const marker of boundedMarkers) {
+        if (!loader.includes(marker)) fail('loader is missing bounded disc marker: ' + marker);
+        else ok('bounded disc marker present: ' + marker);
+    }
+}
 
 if (sizes['iso_bridge.js']) {
-    const js = readFileSync(join(buildDir, 'iso_bridge.js'), 'utf8');
-
-    if (!js.includes('window.duskIsoImport')) {
-        fail('iso_bridge.js does not assign window.duskIsoImport');
-    } else {
-        ok('iso_bridge.js exports window.duskIsoImport');
+    const bridge = readFileSync(join(buildDir, 'iso_bridge.js'), 'utf8');
+    for (const marker of ['window.duskIsoImport', 'GZ2E01', 'GZ2P01', "CISO_MAGIC = 'CISO'", '/dusk/browser-disc']) {
+        if (!bridge.includes(marker)) fail('iso_bridge.js is missing marker: ' + marker);
+        else ok('iso_bridge.js marker present: ' + marker);
     }
-
-    if (!js.includes('2601822a488eeb86fb89db16ca8f29c2c953e1ca')) {
-        fail('iso_bridge.js does not contain the EUR EXPECTED_SHA1 — wrong copy?');
-    } else {
-        ok('iso_bridge.js carries pinned EUR SHA-1');
-    }
+    if (bridge.includes('file.arrayBuffer()')) fail('iso_bridge.js performs a whole-file read');
+    else ok('iso_bridge.js has no whole-file arrayBuffer read');
+    if (bridge.includes('FS.writeFile')) fail('iso_bridge.js copies the disc into MEMFS');
+    else ok('iso_bridge.js has no MEMFS disc copy');
 }
 
-/* ── Summary ────────────────────────────────────────────────────────── */
+if (sizes['_headers']) {
+    const headers = readFileSync(join(buildDir, '_headers'), 'utf8');
+    const required = [
+        'Cross-Origin-Opener-Policy: same-origin',
+        'Cross-Origin-Embedder-Policy: require-corp',
+        'Cross-Origin-Resource-Policy: same-origin',
+    ];
+    for (const header of required) {
+        if (!headers.includes(header)) fail('_headers is missing ' + header);
+        else ok('_headers contains ' + header);
+    }
+}
 
 console.log('---');
-if (failures.length === 0) {
-    console.log(`check_build: PASS (${expected.length} artifacts, ${bytes(Object.values(sizes).reduce((a,b)=>a+b,0))} total)`);
-    process.exit(0);
-} else {
-    console.error(`check_build: FAIL (${failures.length} check(s) failed)`);
+if (failures.length) {
+    console.error('check_build: FAIL (' + failures.length + ' check(s) failed)');
     process.exit(1);
 }
+
+const total = Object.values(sizes).reduce((sum, size) => sum + size, 0);
+console.log('check_build: PASS (' + expected.length + ' artifacts, ' + bytes(total) + ' total)');

@@ -1,4 +1,5 @@
 #include <aurora/dvd.h>
+#include <aurora/web_disc.h>
 #include <dolphin/dvd.h>
 #include <dolphin/os.h>
 #include <nod.h>
@@ -345,17 +346,29 @@ bool aurora_dvd_open(const char* disc_path) {
 
   clearState();
 
-  SDL_IOStream* io = SDL_IOFromFile(disc_path, "rb");
-  if (io == nullptr) {
-    return false;
+  NodDiscStream stream{};
+  if (aurora_web_disc_is_path(disc_path)) {
+    if (aurora_web_disc_length(nullptr) < 0) {
+      return false;
+    }
+    stream = {
+        .user_data = nullptr,
+        .read_at = aurora_web_disc_read_at,
+        .stream_len = aurora_web_disc_length,
+        .close = aurora_web_disc_close,
+    };
+  } else {
+    SDL_IOStream* io = SDL_IOFromFile(disc_path, "rb");
+    if (io == nullptr) {
+      return false;
+    }
+    stream = {
+        .user_data = io,
+        .read_at = sdlStreamReadAt,
+        .stream_len = sdlStreamLen,
+        .close = sdlStreamClose,
+    };
   }
-
-  const NodDiscStream stream{
-      .user_data = io,
-      .read_at = sdlStreamReadAt,
-      .stream_len = sdlStreamLen,
-      .close = sdlStreamClose,
-  };
   const NodDiscOptions options{
       .preloader_threads = 1,
   };

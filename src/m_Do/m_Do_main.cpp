@@ -76,6 +76,7 @@ extern "C" void aurora_frame_diag_iter_tick() noexcept;
 #include <aurora/event.h>
 #include <aurora/main.h>
 #include <aurora/dvd.h>
+#include <aurora/web_disc.h>
 #include <dolphin/dvd.h>
 
 #include "SDL3/SDL_filesystem.h"
@@ -829,7 +830,23 @@ int game_main(int argc, char* argv[]) {
     bool dvd_opened = false;
     if (parsed_arg_options.count("dvd")) {
         dvd_path = parsed_arg_options["dvd"].as<std::string>();
-        if (dusk::iso::inspect(dvd_path.c_str(), discInfo) == dusk::iso::ValidationError::Success) {
+        bool browserDisc = false;
+        dusk::iso::ValidationError discValidation;
+#ifdef __EMSCRIPTEN__
+        browserDisc = aurora_web_disc_is_path(dvd_path.c_str());
+        if (browserDisc) {
+            // Perform Dusk's pinned XXH3 verification incrementally through the
+            // bounded browser reader before any game data is trusted.
+            DuskLog.info("Incrementally verifying browser DVD image");
+            dusk::iso::VerificationStatus status{};
+            discValidation = dusk::iso::validate(dvd_path.c_str(), status, discInfo);
+        } else
+#endif
+        {
+            discValidation = dusk::iso::inspect(dvd_path.c_str(), discInfo);
+        }
+
+        if (discValidation == dusk::iso::ValidationError::Success) {
             DuskLog.info("Loading DVD image from command line: {}", dvd_path);
             dvd_opened = aurora_dvd_open(dvd_path.c_str());
             if (!dvd_opened) {
@@ -838,7 +855,8 @@ int game_main(int argc, char* argv[]) {
             } else {
                 dusk::getSettings().backend.isoPath.setValue(dvd_path);
                 dusk::getSettings().backend.isoVerification.setValue(
-                    dusk::DiscVerificationState::Unknown);
+                    browserDisc ? dusk::DiscVerificationState::Success
+                                : dusk::DiscVerificationState::Unknown);
                 dusk::config::Save();
                 dusk::IsGameLaunched = true;
             }

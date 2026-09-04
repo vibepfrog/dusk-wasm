@@ -524,6 +524,7 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/Toolchain-emscripten.cmake",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install-web",
+        "Rust_TOOLCHAIN": "nightly-2026-09-01",
         "Rust_CARGO_TARGET": "wasm32-unknown-emscripten",
         "Rust_RUSTUP_INSTALL_MISSING_TARGET": {
           "type": "BOOL",

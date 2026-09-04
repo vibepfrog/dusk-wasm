@@ -1,5 +1,6 @@
 #include "iso_validate.hpp"
 
+#include <aurora/web_disc.h>
 #include <SDL3/SDL_iostream.h>
 #include <nod.h>
 #include <xxhash.h>
@@ -154,6 +155,33 @@ void StreamClose(void* user_data) {
     SDL_CloseIO(static_cast<SDL_IOStream*>(user_data));
 }
 
+bool OpenDiscStream(const char* path, NodDiscStream& stream) {
+    if (aurora_web_disc_is_path(path)) {
+        if (aurora_web_disc_length(nullptr) < 0) {
+            return false;
+        }
+        stream = {
+            .user_data = nullptr,
+            .read_at = aurora_web_disc_read_at,
+            .stream_len = aurora_web_disc_length,
+            .close = aurora_web_disc_close,
+        };
+        return true;
+    }
+
+    auto* sdlStream = SDL_IOFromFile(path, "rb");
+    if (sdlStream == nullptr) {
+        return false;
+    }
+    stream = {
+        .user_data = sdlStream,
+        .read_at = StreamReadAt,
+        .stream_len = StreamLength,
+        .close = StreamClose,
+    };
+    return true;
+}
+
 ValidationError verify_disc(NodHandle* disc, VerificationStatus& status) {
     std::unique_ptr<XXH3_state_t, decltype(&XXH3_freeState)> hashState(
         XXH3_createState(), XXH3_freeState);
@@ -186,18 +214,12 @@ ValidationError verify_disc(NodHandle* disc, VerificationStatus& status) {
 }
 
 ValidationError validate(const char* path, VerificationStatus& status, DiscInfo& info) {
-    const auto sdlStream = SDL_IOFromFile(path, "rb");
-    if (sdlStream == nullptr) {
+    NodDiscStream nod_stream{};
+    if (!OpenDiscStream(path, nod_stream)) {
         return ValidationError::IOError;
     }
 
     NodHandleWrapper disc;
-    const NodDiscStream nod_stream{
-        .user_data = sdlStream,
-        .read_at = StreamReadAt,
-        .stream_len = StreamLength,
-        .close = StreamClose,
-    };
     auto result = nod_disc_open_stream(&nod_stream, nullptr, &disc.handle);
     if (disc.handle == nullptr || result != NOD_RESULT_OK) {
         return convert_nod_error(result);
@@ -224,18 +246,12 @@ ValidationError validate(const char* path, VerificationStatus& status, DiscInfo&
 }
 
 ValidationError inspect(const char* path, DiscInfo& info) {
-    const auto sdlStream = SDL_IOFromFile(path, "rb");
-    if (sdlStream == nullptr) {
+    NodDiscStream nod_stream{};
+    if (!OpenDiscStream(path, nod_stream)) {
         return ValidationError::IOError;
     }
 
     NodHandleWrapper disc;
-    const NodDiscStream nod_stream{
-        .user_data = sdlStream,
-        .read_at = StreamReadAt,
-        .stream_len = StreamLength,
-        .close = StreamClose,
-    };
     auto result = nod_disc_open_stream(&nod_stream, nullptr, &disc.handle);
     if (disc.handle == nullptr || result != NOD_RESULT_OK) {
         return convert_nod_error(result);

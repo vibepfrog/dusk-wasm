@@ -102,6 +102,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL Linux)
 endif ()
 
 if (EMSCRIPTEN)
+  # Every object in a shared-memory Wasm link must advertise atomics and
+  # bulk-memory target features, not only the final executable link step.
+  add_compile_options(-pthread)
+
   # Pin CMAKE_AR to emsdk's bundled llvm-ar directly. Two reasons:
   #  1. Windows: emsdk's Emscripten.cmake toolchain sets CMAKE_AR to emar.bat,
   #     which routes through cmd.exe. cmd.exe's ~8190-char argv limit gets hit
@@ -552,6 +556,9 @@ if (EMSCRIPTEN)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/web"
     )
     target_link_options(dusk PRIVATE
+        -pthread
+        -sPTHREAD_POOL_SIZE=6
+        -sPROXY_TO_PTHREAD=1
         # Aurora links emdawnwebgpu via the AuroraDawnProvider `emscripten` mode;
         # disable emcc's older built-in WebGPU so the two don't fight over symbols.
         -sUSE_WEBGPU=0
@@ -571,19 +578,14 @@ if (EMSCRIPTEN)
         # heaps lower; 2 GB is safe across Chrome/Edge/Safari/Firefox.
         -sMAXIMUM_MEMORY=2147483648
         -sSTACK_SIZE=5242880
-        -sASYNCIFY=1
-        # 4 MB Asyncify stack: Aurora's command-processor + WaitAny chains can be deep.
-        # JSPI would obsolete Asyncify but isn't universally shipped — see
-        # docs/wasm-port-notes.md for the WebKit-bug-#304810 rationale.
-        -sASYNCIFY_STACK_SIZE=4194304
         -sEXIT_RUNTIME=0
         -sFORCE_FILESYSTEM=1
-        # Required for FS.syncfs() against /save and /iso — see web/pre.js.
+        # Required for FS.syncfs() against /save — see web/pre.js.
         -lidbfs.js
         # Modern emcc strips runtime exports unless asked. The shell uses callMain
-        # (we set noInitialRun=true to defer main() until /iso/dusk.ciso exists),
-        # FS+IDBFS for the CISO write, addRun/removeRun deps in pre.js for the
-        # IDBFS rehydrate gate, and getExceptionMessage so we can extract the
+        # (we set noInitialRun=true to defer main() until the browser File has
+        # reached every worker), FS+IDBFS for saves, addRun/removeRun deps in
+        # pre.js for the IDBFS rehydrate gate, and getExceptionMessage so we can extract the
         # actual C++ what() string when main() throws a CppException.
         "SHELL:-sEXPORTED_RUNTIME_METHODS=callMain,FS,IDBFS,addRunDependency,removeRunDependency,getExceptionMessage"
         # Sanity-check assertions in the wasm runtime — clearer error messages,
@@ -615,13 +617,19 @@ if (EMSCRIPTEN)
         "${CMAKE_SOURCE_DIR}/web/pre.js"
         "${CMAKE_SOURCE_DIR}/web/unwind_shim.js"
     )
-    # iso_bridge.js is loaded by the HTML shell at runtime (file-picker → CISO writer),
+    # iso_bridge.js is loaded by the HTML shell at runtime (file picker → worker handoff),
     # not linked into the wasm — copy it next to index.html so the <script> tag resolves.
     add_custom_command(TARGET dusk POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/web/iso_bridge.js"
             "${CMAKE_BINARY_DIR}/web/iso_bridge.js"
-        COMMENT "Copying ISO bridge JS"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/web/_headers"
+            "${CMAKE_BINARY_DIR}/web/_headers"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/web/coi-serviceworker.js"
+            "${CMAKE_BINARY_DIR}/web/coi-serviceworker.js"
+        COMMENT "Copying web runtime support files"
     )
 endif ()
 
