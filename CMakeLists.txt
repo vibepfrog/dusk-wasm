@@ -584,13 +584,14 @@ if (EMSCRIPTEN)
         -sMAXIMUM_MEMORY=2147483648
         -sSTACK_SIZE=5242880
         # Aurora creates the WebGPU adapter and device through synchronous
-        # WaitAny() calls. Browser WebGPU resolves those operations with JS
-        # promises, so the pthread build still needs Asyncify to suspend and
-        # resume this call chain while the promises settle. Pthreads provide
-        # parallelism; they do not replace this async bridge.
-        -sASYNCIFY=1
-        # Aurora's initialization and command-processor call chains are deep.
-        -sASYNCIFY_STACK_SIZE=4194304
+        # WaitAny() calls, while browser WebGPU resolves them with promises.
+        # Use the VM's JSPI stack switching for that bridge. Binaryen Asyncify
+        # instruments every Wasm export, including SDL's DOM-event callbacks;
+        # with PROXY_TO_PTHREAD those callbacks run concurrently with an
+        # unwound render-worker stack and trap in SDL_malloc ("null function").
+        # JSPI keeps the normal Wasm code/table intact and suspends only the
+        # promise-crossing call chain.
+        -sJSPI=1
         -sEXIT_RUNTIME=0
         -sFORCE_FILESYSTEM=1
         # Required for FS.syncfs() against /save — see web/pre.js.

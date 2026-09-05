@@ -190,6 +190,14 @@
                 'Threading is unavailable. This page must be served with COOP and COEP security headers.',
                 true
             );
+        } else if (typeof WebAssembly.Suspending !== 'function' ||
+                   typeof WebAssembly.promising !== 'function') {
+            fileInput.disabled = true;
+            pickButton.setAttribute('aria-disabled', 'true');
+            setStatus(
+                'WebAssembly JSPI is unavailable. Use a current Chromium browser with JSPI enabled.',
+                true
+            );
         } else if (!navigator.gpu) {
             fileInput.disabled = true;
             pickButton.setAttribute('aria-disabled', 'true');

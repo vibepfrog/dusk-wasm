@@ -5,15 +5,24 @@
 The Emscripten build now compiles and links Dusk with shared WebAssembly memory,
 preloaded pthread workers, WebGPU, a transferred OffscreenCanvas, and a bounded
 browser disc stream. Static and Node regression tests pass. A real Chrome run
-has reached Aurora's WebGPU surface creation; the next validation step is to
-rerun after enabling the canvas transfer described below.
+has transferred the canvas, created the WebGPU surface, and reached adapter
+selection. The next validation step is to rerun with JSPI after removing the
+legacy Asyncify transform described below.
 
-The pthread runtime also retains Asyncify with a 4 MiB unwind stack. Aurora's
-WebGPU startup uses synchronous `WaitAny()` calls for the browser's asynchronous
-adapter and device requests; without Asyncify, emdawnwebgpu rejects the requested
-`TimedWaitAny` instance feature before it can create the adapter. Pthreads are
-used for parallel game work and synchronous `FileReaderSync` disc access, but do
-not replace that JavaScript-promise suspension bridge.
+Aurora's WebGPU startup uses synchronous `WaitAny()` calls for the browser's
+asynchronous adapter and device requests, so emdawnwebgpu needs a promise-aware
+stack suspension mechanism. The first threaded build used Binaryen Asyncify,
+but SDL's DOM pointer handlers then entered an Asyncify-instrumented `SDL_malloc`
+export on the browser thread while the application pthread was suspended. That
+trapped repeatedly as `RuntimeError: null function` from
+`SDL3.makePointerEventCStruct`.
+
+The build now uses JSPI (`-sJSPI=1`). JSPI leaves the Wasm code and indirect
+function table intact and stack-switches only across the asynchronous WebGPU
+boundary, avoiding that cross-thread Asyncify re-entry. The shell explicitly
+checks for `WebAssembly.Suspending` and `WebAssembly.promising`. Pthreads remain
+responsible for parallel game work and synchronous `FileReaderSync` disc access;
+JSPI is the separate JavaScript-promise bridge.
 
 ## Render-worker canvas ownership
 
@@ -32,6 +41,8 @@ verification checks for the transfer and selector markers in `index.js`.
 The repeated `emscripten_proxy_async failed` key/focus errors observed after the
 original surface failure were fallout from browser event handlers trying to
 call an application worker that had already aborted, not disc-image failures.
+Likewise, the later `SDL_malloc` pointer-event flood occurs before disc parsing
+and says nothing about the selected CISO's validity.
 
 ## Pinned toolchain
 
@@ -96,5 +107,6 @@ Use a clean, user-owned USA or EUR image. The immediate target is a USA CISO
 whose logical GameCube identity is `GZ2E01` (retail serial `DOL-GZ2E-USA`). A
 native validation failure indicates a modified, lossy, corrupt, or unsupported
 dump; do not weaken the hash gate to make such an image boot. The corrected run
-should advance past `Attempting to initialize WebGPU` without the
-`getContext`/undefined error before disc integrity becomes the next checkpoint.
+should advance past the two benign Windows `powerPreference` warnings without
+either the old `getContext` error or the Asyncify-era `SDL_malloc`/`null function`
+flood. Disc integrity becomes a later checkpoint.

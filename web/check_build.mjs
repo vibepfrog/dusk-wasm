@@ -53,13 +53,13 @@ if (sizes['index.wasm']) {
     if (!versionOk) fail('index.wasm is not version 1');
     else ok('wasm version 1');
 
-    // Aurora uses synchronous WebGPU WaitAny() during adapter/device startup.
-    // Emdawnwebgpu can only provide that bridge when Asyncify or JSPI is
-    // enabled. This build deliberately uses Asyncify because JSPI is not yet
-    // available in every target browser and conflicts with our exception mode.
+    // Binaryen Asyncify is unsafe here: SDL's browser-main-thread event
+    // callbacks can enter an Asyncify-instrumented export while WebGPU has the
+    // application pthread suspended. JSPI provides the promise bridge without
+    // rewriting every Wasm function or its indirect-call table.
     const asyncifyMarker = Buffer.from('asyncify_start_unwind');
-    if (!wasm.includes(asyncifyMarker)) fail('index.wasm is missing Asyncify support required by WebGPU WaitAny');
-    else ok('Asyncify WebGPU wait support present');
+    if (wasm.includes(asyncifyMarker)) fail('index.wasm still contains legacy Binaryen Asyncify instrumentation');
+    else ok('legacy Binaryen Asyncify instrumentation absent');
 }
 
 if (sizes['index.html']) {
@@ -97,6 +97,12 @@ if (sizes['coi-serviceworker.js']) {
 
 if (sizes['index.js']) {
     const loader = readFileSync(join(buildDir, 'index.js'), 'utf8');
+
+    for (const marker of ['WebAssembly.Suspending', 'WebAssembly.promising']) {
+        if (!loader.includes(marker)) fail('loader is missing JSPI marker: ' + marker);
+        else ok('JSPI marker present: ' + marker);
+    }
+
     const sharedMemory = /new WebAssembly\.Memory\(\{[^}]*["']?shared["']?\s*:\s*(?:true|!0)\b[^}]*\}\)/.test(loader);
     if (!sharedMemory) fail('loader does not construct shared WebAssembly.Memory');
     else ok('loader constructs shared WebAssembly.Memory');
