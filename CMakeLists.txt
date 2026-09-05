@@ -130,12 +130,15 @@ if (EMSCRIPTEN)
   unset(CMAKE_AR)
   set(CMAKE_AR "$ENV{EMSDK}/upstream/bin/llvm-ar${_emsdk_ar_suffix}")
 
-  # emcc compiles C++ with exceptions DISABLED by default — every try/catch is
-  # elided and throws unwind straight past them to JS as uncaught CppException.
-  # Enable at the directory level BEFORE add_subdirectory(extern/aurora) so all
-  # aurora + JSystem + dusk targets compile with exception support. Linker
-  # already gets -fexceptions via target_link_options on dusk below.
-  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexceptions>)
+  # JSPI cannot suspend through the legacy JavaScript invoke_* exception
+  # trampolines (-fexceptions). Use native Wasm EH consistently in Dusk and
+  # Aurora. C libraries must use matching setjmp/longjmp lowering as well.
+  # Set this BEFORE add_subdirectory(extern/aurora) so its dependencies inherit it.
+  # https://github.com/emscripten-core/emscripten/issues/24302
+  add_compile_options(
+    $<$<COMPILE_LANGUAGE:CXX>:-fwasm-exceptions>
+    $<$<COMPILE_LANGUAGE:C,CXX>:-sSUPPORT_LONGJMP=wasm>
+  )
 endif ()
 
 # Verbose-bring-up trace gate. The WASM port has temporary per-frame /
@@ -567,14 +570,11 @@ if (EMSCRIPTEN)
         # Aurora links emdawnwebgpu via the AuroraDawnProvider `emscripten` mode;
         # disable emcc's older built-in WebGPU so the two don't fight over symbols.
         -sUSE_WEBGPU=0
-        # Enable C++ exception support: rust's wasm32-unknown-emscripten target emits
-        # objects that reference __cpp_exception from libcxxabi (libnod.a does so via
-        # cargo's default panic=unwind). -fexceptions enables EH at compile/link;
-        # -sDISABLE_EXCEPTION_CATCHING=0 forces the runtime catch tables + libcxxabi
-        # personality routine (which provides __cpp_exception) to be linked even when
-        # consumer code doesn't visibly throw.
-        -fexceptions
-        -sDISABLE_EXCEPTION_CATCHING=0
+        # Match the native exception model used at compile time. Legacy JS EH
+        # makes JSPI fail during global construction (Z2AudioMgr), before main.
+        # nod and its rebuilt Rust std retain panic=abort.
+        -fwasm-exceptions
+        -sSUPPORT_LONGJMP=wasm
         -sALLOW_MEMORY_GROWTH=1
         # 256 MB initial — TP carries more model/audio/movie data than slider's AC,
         # so we start above slider's 128 MB to avoid an early grow stutter.

@@ -54,8 +54,10 @@ if (_aurora_nod_provider STREQUAL "vendor")
       # rebuilds it below with the pinned nightly toolchain.
       set(NOD_THREADING ON CACHE BOOL "Enable nod preloader thread on emscripten" FORCE)
       set(ENV{RUSTFLAGS} "-C target-feature=+atomics,+bulk-memory,+mutable-globals")
-      set(ENV{CFLAGS_wasm32_unknown_emscripten} "-pthread")
-      set(ENV{CXXFLAGS_wasm32_unknown_emscripten} "-pthread")
+      # Cargo's cc-rs compression dependencies do not inherit CMake options.
+      # Keep their exception/setjmp model consistent with the JSPI engine.
+      set(ENV{CFLAGS_wasm32_unknown_emscripten} "-pthread -sSUPPORT_LONGJMP=wasm")
+      set(ENV{CXXFLAGS_wasm32_unknown_emscripten} "-pthread -fwasm-exceptions -sSUPPORT_LONGJMP=wasm")
     endif ()
 
     # Corrosion may default to the host Rust target triple (commonly x86_64 on
@@ -92,8 +94,8 @@ if (_aurora_nod_provider STREQUAL "vendor")
       corrosion_set_env_vars(nod
         "CARGO_PROFILE_RELEASE_PANIC=abort"
         "RUSTFLAGS=-C target-feature=+atomics,+bulk-memory,+mutable-globals"
-        "CFLAGS_wasm32_unknown_emscripten=-pthread"
-        "CXXFLAGS_wasm32_unknown_emscripten=-pthread"
+        "CFLAGS_wasm32_unknown_emscripten=-pthread -sSUPPORT_LONGJMP=wasm"
+        "CXXFLAGS_wasm32_unknown_emscripten=-pthread -fwasm-exceptions -sSUPPORT_LONGJMP=wasm"
       )
     endif ()
     set(BUILD_SHARED_LIBS "${_aurora_nod_saved_bsl}")

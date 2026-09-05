@@ -61,6 +61,23 @@ if (sizes['index.wasm']) {
     const asyncifyMarker = Buffer.from('asyncify_start_unwind');
     if (wasm.includes(asyncifyMarker)) fail('index.wasm still contains legacy Binaryen Asyncify instrumentation');
     else ok('legacy Binaryen Asyncify instrumentation absent');
+
+    // Compile for inspection only: do not instantiate the game or run ctors.
+    // Check import/export metadata rather than strings in the debug name section.
+    try {
+        const module = new WebAssembly.Module(wasm);
+        const legacy = WebAssembly.Module.imports(module).filter(entry =>
+            entry.kind === 'function' && /^invoke_/.test(entry.name));
+        if (legacy.length) {
+            fail('legacy JS exception/longjmp imports remain: ' + legacy.map(entry => entry.name).join(', '));
+        } else ok('no legacy JS invoke_* exception/longjmp imports');
+        if (!WebAssembly.Module.exports(module).some(entry =>
+            entry.kind === 'tag' && entry.name === '__cpp_exception')) {
+            fail('native Wasm C++ exception tag is missing');
+        } else ok('native Wasm C++ exception tag present');
+    } catch (error) {
+        fail('cannot inspect compiled Wasm exception model: ' + error.message);
+    }
 }
 
 if (sizes['index.html']) {

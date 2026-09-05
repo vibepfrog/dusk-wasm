@@ -8,7 +8,9 @@ browser disc stream. Static and Node regression tests pass. Before the JSPI
 switch, a real Chrome run reached WebGPU adapter selection but then hit the
 SDL pointer-event failure described below. The first JSPI test instead stopped
 at an earlier launcher race; it does not yet establish whether JSPI fixes that
-SDL failure. Browser validation beyond startup remains outstanding.
+SDL failure. A subsequent ROM-free browser test exposed a JSPI/legacy-exception
+incompatibility in global construction, now addressed by the native exception
+configuration below. Browser validation beyond startup remains outstanding.
 
 Aurora's WebGPU startup uses synchronous `WaitAny()` calls for the browser's
 asynchronous adapter and device requests, so emdawnwebgpu needs a promise-aware
@@ -39,6 +41,22 @@ capability failures, and synchronous/promise-based main failures. These are
 launcher regression checks, not an end-to-end browser/game test. Exact-string
 checks for the source formatting were removed because HTML/JS minification
 caused false failures after a successful Wasm compile.
+
+## Native exceptions with JSPI
+
+The browser failed in `Z2AudioMgr::Z2AudioMgr()` from `__wasm_call_ctors` with
+`SuspendError: trying to suspend without WebAssembly.promising`. The previous
+`-fexceptions`/`-sDISABLE_EXCEPTION_CATCHING=0` configuration used JavaScript
+`invoke_*` exception trampolines, which are incompatible with JSPI suspension
+([Emscripten issue 24302](https://github.com/emscripten-core/emscripten/issues/24302)).
+
+All CMake C++ targets now compile and link with `-fwasm-exceptions`. C and C++
+compilation also use `-sSUPPORT_LONGJMP=wasm` so C library setjmp/longjmp matches
+the exception model. Cargo-built C/C++ compression dependencies receive the
+same options through cc-rs environment variables; Rust remains panic=abort.
+The build verifier rejects any remaining `invoke_*` Wasm imports and requires
+the native C++ exception tag. Constructors still run synchronously; this change
+does not make all exports asynchronous or skip global initialization.
 
 ## Render-worker canvas ownership
 
