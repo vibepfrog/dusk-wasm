@@ -4,9 +4,11 @@
 
 The Emscripten build now compiles and links Dusk with shared WebAssembly memory,
 preloaded pthread workers, WebGPU, a transferred OffscreenCanvas, and a bounded
-browser disc stream. Static and Node regression tests pass. A real Chrome run
-has transferred the canvas, created the WebGPU surface, and initialized WebGPU
-with JSPI without reproducing the legacy Asyncify pointer-event crash.
+browser disc stream. Static and Node regression tests pass. Before the JSPI
+switch, a real Chrome run reached WebGPU adapter selection but then hit the
+SDL pointer-event failure described below. The first JSPI test instead stopped
+at an earlier launcher race; it does not yet establish whether JSPI fixes that
+SDL failure. Browser validation beyond startup remains outstanding.
 
 Aurora's WebGPU startup uses synchronous `WaitAny()` calls for the browser's
 asynchronous adapter and device requests, so emdawnwebgpu needs a promise-aware
@@ -29,6 +31,14 @@ calling `Module.callMain()` while asynchronous `preRun` dependencies (including
 filesystem setup) remain. A JSPI promise returned by `callMain()` is also
 observed so startup failures are reported by the launcher instead of becoming
 unhandled promise rejections.
+
+The build verifier executes the generated, minified launcher's inline script
+with DOM and Emscripten stubs. It checks early selection/drop events, the
+independent runtime promise gate, delayed disc handoff, duplicate starts,
+capability failures, and synchronous/promise-based main failures. These are
+launcher regression checks, not an end-to-end browser/game test. Exact-string
+checks for the source formatting were removed because HTML/JS minification
+caused false failures after a successful Wasm compile.
 
 ## Render-worker canvas ownership
 
@@ -70,6 +80,7 @@ emcmake cmake --preset web-emscripten-fast
 cmake --build --preset web-emscripten-fast --parallel
 node web/check_build.mjs build/web-emscripten-fast/web
 node --test web/iso_bridge.test.mjs
+node --test web/shell_runtime.test.mjs
 ```
 
 The hosting origin must return these response headers:

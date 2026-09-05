@@ -3,6 +3,7 @@
 import { readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkShellRuntime } from './shell_runtime_check.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const buildDir = resolve(process.argv[2] || join(__dirname, '..', 'build', 'web-emscripten-fast', 'web'));
@@ -82,14 +83,13 @@ if (sizes['index.html']) {
         fail('shell is missing the cross-origin isolation runtime guard');
     } else ok('cross-origin isolation runtime guard present');
 
-    if (!html.includes('runtimeReadyPromise.then(function ()') ||
-        !html.includes('onRuntimeInitialized: function ()')) {
-        fail('shell does not gate disc import on Emscripten runtime initialization');
-    } else ok('disc import is gated on Emscripten runtime initialization');
-
-    if (!/<input[^>]*\bid=["']iso-file["'][^>]*\bdisabled\b/i.test(html)) {
-        fail('disc chooser is not initially disabled while the runtime loads');
-    } else ok('disc chooser starts disabled until the runtime is ready');
+    // Emscripten minifies JS whitespace, local names, and HTML attributes.
+    // Exercise the generated launcher's behavior instead of matching source text.
+    try {
+        for (const check of await checkShellRuntime(html)) ok('launcher: ' + check);
+    } catch (error) {
+        fail('launcher runtime check: ' + error.message);
+    }
 }
 
 if (sizes['coi-serviceworker.js']) {
