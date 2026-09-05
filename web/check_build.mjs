@@ -105,6 +105,14 @@ if (sizes['index.js']) {
         fail('loader is missing the pthread worker bootstrap');
     } else ok('pthread worker bootstrap present');
 
+    // main() is proxied to a pthread. WebGPU surface creation must therefore
+    // use the canvas transferred by Emscripten rather than a DOM lookup, since
+    // document is unavailable in the render worker.
+    for (const marker of ['transferControlToOffscreen', 'offscreenCanvases', '!canvas']) {
+        if (!loader.includes(marker)) fail('loader is missing OffscreenCanvas worker marker: ' + marker);
+        else ok('OffscreenCanvas worker marker present: ' + marker);
+    }
+
     const boundedMarkers = ['BroadcastChannel', '__duskDiscFile', 'FileReaderSync', '4194304'];
     for (const marker of boundedMarkers) {
         if (!loader.includes(marker)) fail('loader is missing bounded disc marker: ' + marker);

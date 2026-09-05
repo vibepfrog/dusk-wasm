@@ -559,6 +559,11 @@ if (EMSCRIPTEN)
         -pthread
         -sPTHREAD_POOL_SIZE=6
         -sPROXY_TO_PTHREAD=1
+        # PROXY_TO_PTHREAD runs SDL/Aurora on a worker, which has no DOM. Give
+        # the generated main-thread stub permission to transfer Module.canvas
+        # to that worker as an OffscreenCanvas. Emscripten 5.0.6 defaults the
+        # transfer selector to #canvas, matching web/shell.html.
+        -sOFFSCREENCANVAS_SUPPORT=1
         # Aurora links emdawnwebgpu via the AuroraDawnProvider `emscripten` mode;
         # disable emcc's older built-in WebGPU so the two don't fight over symbols.
         -sUSE_WEBGPU=0

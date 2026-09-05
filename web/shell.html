@@ -190,6 +190,14 @@
                 'Threading is unavailable. This page must be served with COOP and COEP security headers.',
                 true
             );
+        } else if (!navigator.gpu) {
+            fileInput.disabled = true;
+            pickButton.setAttribute('aria-disabled', 'true');
+            setStatus('WebGPU is unavailable. Use a current browser with WebGPU enabled.', true);
+        } else if (typeof Module.canvas.transferControlToOffscreen !== 'function') {
+            fileInput.disabled = true;
+            pickButton.setAttribute('aria-disabled', 'true');
+            setStatus('OffscreenCanvas is unavailable. This browser cannot run threaded WebGPU rendering.', true);
         }
 
         window.onerror = function (message, source, line, column, error) {

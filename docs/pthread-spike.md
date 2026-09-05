@@ -3,9 +3,10 @@
 ## Status
 
 The Emscripten build now compiles and links Dusk with shared WebAssembly memory,
-preloaded pthread workers, WebGPU, and a bounded browser disc stream. Static and
-Node regression tests pass. A real browser run with a user-owned disc image is
-the next validation step.
+preloaded pthread workers, WebGPU, a transferred OffscreenCanvas, and a bounded
+browser disc stream. Static and Node regression tests pass. A real Chrome run
+has reached Aurora's WebGPU surface creation; the next validation step is to
+rerun after enabling the canvas transfer described below.
 
 The pthread runtime also retains Asyncify with a 4 MiB unwind stack. Aurora's
 WebGPU startup uses synchronous `WaitAny()` calls for the browser's asynchronous
@@ -13,6 +14,24 @@ adapter and device requests; without Asyncify, emdawnwebgpu rejects the requeste
 `TimedWaitAny` instance feature before it can create the adapter. Pthreads are
 used for parallel game work and synchronous `FileReaderSync` disc access, but do
 not replace that JavaScript-promise suspension bridge.
+
+## Render-worker canvas ownership
+
+`PROXY_TO_PTHREAD` runs SDL and Aurora on a pthread worker. Workers cannot query
+the page DOM, so a surface descriptor that names `#canvas` fails at
+`wgpuInstanceCreateSurface()` with `getContext` on an undefined object unless
+the canvas is transferred first.
+
+The link now enables `OFFSCREENCANVAS_SUPPORT`. Emscripten 5.0.6's proxied-main
+stub transfers `Module.canvas` (its default selector is `#canvas`) to the
+application pthread. Aurora then follows Dawn's Emscripten adapter convention:
+it maps the synthetic `!canvas` target to the worker's `Module.canvas` and asks
+emdawnwebgpu to create the WebGPU surface from that OffscreenCanvas. Build
+verification checks for the transfer and selector markers in `index.js`.
+
+The repeated `emscripten_proxy_async failed` key/focus errors observed after the
+original surface failure were fallout from browser event handlers trying to
+call an application worker that had already aborted, not disc-image failures.
 
 ## Pinned toolchain
 
@@ -76,4 +95,6 @@ response headers; it reloads once after the service worker takes control.
 Use a clean, user-owned USA or EUR image. The immediate target is a USA CISO
 whose logical GameCube identity is `GZ2E01` (retail serial `DOL-GZ2E-USA`). A
 native validation failure indicates a modified, lossy, corrupt, or unsupported
-dump; do not weaken the hash gate to make such an image boot.
+dump; do not weaken the hash gate to make such an image boot. The corrected run
+should advance past `Attempting to initialize WebGPU` without the
+`getContext`/undefined error before disc integrity becomes the next checkpoint.

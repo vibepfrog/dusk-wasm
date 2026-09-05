@@ -2,6 +2,10 @@
 
 #include <memory>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#endif
+
 #if !defined(SDL_PLATFORM_MACOS) && !defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_TVOS)
 #include <SDL3/SDL_video.h>
 #endif
@@ -25,16 +29,15 @@ std::shared_ptr<wgpu::ChainedStruct> SetupWindowAndGetSurfaceDescriptor(SDL_Wind
   desc->hinstance = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, nullptr);
   return std::move(desc);
 #elif defined(SDL_PLATFORM_EMSCRIPTEN)
-  // Browser WebGPU surfaces are addressed by CSS selector against the host page's
-  // <canvas>. The shell HTML wires #canvas to the Module's drawing surface (see
-  // dusk/web/shell.html), and SDL3's emscripten backend creates the same canvas
-  // automatically — so we don't need any pointer from SDL_GetWindowProperties.
-  // emdawnwebgpu names this struct EmscriptenSurfaceSourceCanvasHTMLSelector
-  // (the Emscripten prefix distinguishes it from the native Dawn variant).
+  // PROXY_TO_PTHREAD transfers Module.canvas to this worker as an
+  // OffscreenCanvas. A worker has no DOM, so map Dawn's synthetic selector to
+  // that object instead of asking document.querySelector("#canvas"). This is
+  // the same mapping used by Dawn's Emscripten GLFW surface adapter.
   (void)props;
+  EM_ASM({ self.specialHTMLTargets && (specialHTMLTargets["!canvas"] = Module.canvas) });
   std::shared_ptr<wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector> desc =
       std::make_shared<wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector>();
-  desc->selector = "#canvas";
+  desc->selector = "!canvas";
   return std::move(desc);
 #elif defined(SDL_PLATFORM_LINUX)
   const char* driver = SDL_GetCurrentVideoDriver();
