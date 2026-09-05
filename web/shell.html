@@ -50,8 +50,8 @@
             <div class="subtitle">A web port of The Legend of Zelda: Twilight Princess (GameCube)</div>
 
             <div class="prompt">Drop your Twilight Princess GameCube disc image here</div>
-            <label class="pick-btn" for="iso-file">Choose file</label>
-            <input id="iso-file" type="file" accept=".iso,.gcm,.ciso">
+            <label class="pick-btn" for="iso-file" aria-disabled="true">Choose file</label>
+            <input id="iso-file" type="file" accept=".iso,.gcm,.ciso" disabled>
 
             <div class="disc-line">
                 Supported: USA <code>GZ2E01</code> or EUR <code>GZ2P01</code>, as ISO/GCM or CISO.<br>
@@ -72,6 +72,11 @@
         var bootStatusEl = document.getElementById('boot-status');
         var pickButton = dropZone.querySelector('.pick-btn');
         var importing = false;
+        var capabilityError = '';
+        var resolveRuntimeReady;
+        var runtimeReadyPromise = new Promise(function (resolve) {
+            resolveRuntimeReady = resolve;
+        });
 
         function setStatus(text, isError) {
             statusEl.textContent = text || '';
@@ -102,20 +107,34 @@
             importing = true;
             setStatus('Starting...', false);
 
-            window.duskIsoImport.importIso(file, {
-                onPhase: function (name) { setStatus(phaseLabel(name), false); },
+            // onRuntimeInitialized is Emscripten's guarantee that preRun work
+            // (including async filesystem setup) has released every run
+            // dependency. callMain() asserts if it is reached any earlier.
+            runtimeReadyPromise.then(function () {
+                return window.duskIsoImport.importIso(file, {
+                    onPhase: function (name) { setStatus(phaseLabel(name), false); },
+                });
             }).then(function (result) {
                 setStatus('Loaded. Starting game.', false);
                 dropZone.classList.add('hidden');
                 document.getElementById('canvas').focus();
-                try {
-                    Module.callMain([result.path]);
-                } catch (mainErr) {
+
+                function handleMainFailure(mainErr) {
+                    importing = false;
                     var detail = exceptionDetail(mainErr);
                     console.error('[dusk] main() threw:', detail);
                     console.error('[dusk] stack:', (mainErr && mainErr.stack) || '<no stack>');
                     setStatus('main() threw: ' + detail, true);
                     dropZone.classList.remove('hidden');
+                }
+
+                try {
+                    var mainResult = Module.callMain([result.path]);
+                    if (mainResult && typeof mainResult.then === 'function') {
+                        mainResult.catch(handleMainFailure);
+                    }
+                } catch (mainErr) {
+                    handleMainFailure(mainErr);
                 }
             }).catch(function (err) {
                 importing = false;
@@ -179,33 +198,36 @@
                 console.error('[dusk] onAbort:', reason);
                 console.error('[dusk] wasm stack at abort:\n' + (error.stack || '<no stack>'));
             },
-            onRuntimeInitialized: function () { bootStatusEl.textContent = ''; },
+            onRuntimeInitialized: function () {
+                bootStatusEl.textContent = '';
+                resolveRuntimeReady();
+                if (!capabilityError) {
+                    fileInput.disabled = false;
+                    pickButton.setAttribute('aria-disabled', 'false');
+                    setStatus('', false);
+                }
+            },
         };
         window.Module = Module;
 
         if (!window.crossOriginIsolated || typeof SharedArrayBuffer !== 'function') {
-            fileInput.disabled = true;
-            pickButton.setAttribute('aria-disabled', 'true');
-            setStatus(
-                'Threading is unavailable. This page must be served with COOP and COEP security headers.',
-                true
-            );
+            capabilityError =
+                'Threading is unavailable. This page must be served with COOP and COEP security headers.';
         } else if (typeof WebAssembly.Suspending !== 'function' ||
                    typeof WebAssembly.promising !== 'function') {
-            fileInput.disabled = true;
-            pickButton.setAttribute('aria-disabled', 'true');
-            setStatus(
-                'WebAssembly JSPI is unavailable. Use a current Chromium browser with JSPI enabled.',
-                true
-            );
+            capabilityError =
+                'WebAssembly JSPI is unavailable. Use a current Chromium browser with JSPI enabled.';
         } else if (!navigator.gpu) {
-            fileInput.disabled = true;
-            pickButton.setAttribute('aria-disabled', 'true');
-            setStatus('WebGPU is unavailable. Use a current browser with WebGPU enabled.', true);
+            capabilityError = 'WebGPU is unavailable. Use a current browser with WebGPU enabled.';
         } else if (typeof Module.canvas.transferControlToOffscreen !== 'function') {
-            fileInput.disabled = true;
-            pickButton.setAttribute('aria-disabled', 'true');
-            setStatus('OffscreenCanvas is unavailable. This browser cannot run threaded WebGPU rendering.', true);
+            capabilityError =
+                'OffscreenCanvas is unavailable. This browser cannot run threaded WebGPU rendering.';
+        }
+
+        if (capabilityError) {
+            setStatus(capabilityError, true);
+        } else {
+            setStatus('Loading game runtime...', false);
         }
 
         window.onerror = function (message, source, line, column, error) {

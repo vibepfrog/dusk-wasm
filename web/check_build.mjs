@@ -81,6 +81,15 @@ if (sizes['index.html']) {
     if (!html.includes('crossOriginIsolated') || !html.includes('SharedArrayBuffer')) {
         fail('shell is missing the cross-origin isolation runtime guard');
     } else ok('cross-origin isolation runtime guard present');
+
+    if (!html.includes('runtimeReadyPromise.then(function ()') ||
+        !html.includes('onRuntimeInitialized: function ()')) {
+        fail('shell does not gate disc import on Emscripten runtime initialization');
+    } else ok('disc import is gated on Emscripten runtime initialization');
+
+    if (!/<input[^>]*\bid=["']iso-file["'][^>]*\bdisabled\b/i.test(html)) {
+        fail('disc chooser is not initially disabled while the runtime loads');
+    } else ok('disc chooser starts disabled until the runtime is ready');
 }
 
 if (sizes['coi-serviceworker.js']) {

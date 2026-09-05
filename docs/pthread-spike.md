@@ -5,9 +5,8 @@
 The Emscripten build now compiles and links Dusk with shared WebAssembly memory,
 preloaded pthread workers, WebGPU, a transferred OffscreenCanvas, and a bounded
 browser disc stream. Static and Node regression tests pass. A real Chrome run
-has transferred the canvas, created the WebGPU surface, and reached adapter
-selection. The next validation step is to rerun with JSPI after removing the
-legacy Asyncify transform described below.
+has transferred the canvas, created the WebGPU surface, and initialized WebGPU
+with JSPI without reproducing the legacy Asyncify pointer-event crash.
 
 Aurora's WebGPU startup uses synchronous `WaitAny()` calls for the browser's
 asynchronous adapter and device requests, so emdawnwebgpu needs a promise-aware
@@ -23,6 +22,13 @@ boundary, avoiding that cross-thread Asyncify re-entry. The shell explicitly
 checks for `WebAssembly.Suspending` and `WebAssembly.promising`. Pthreads remain
 responsible for parallel game work and synchronous `FileReaderSync` disc access;
 JSPI is the separate JavaScript-promise bridge.
+
+The file chooser starts disabled and is enabled only from Emscripten's
+`onRuntimeInitialized` callback. This prevents a fast file selection from
+calling `Module.callMain()` while asynchronous `preRun` dependencies (including
+filesystem setup) remain. A JSPI promise returned by `callMain()` is also
+observed so startup failures are reported by the launcher instead of becoming
+unhandled promise rejections.
 
 ## Render-worker canvas ownership
 
@@ -108,5 +114,6 @@ whose logical GameCube identity is `GZ2E01` (retail serial `DOL-GZ2E-USA`). A
 native validation failure indicates a modified, lossy, corrupt, or unsupported
 dump; do not weaken the hash gate to make such an image boot. The corrected run
 should advance past the two benign Windows `powerPreference` warnings without
-either the old `getContext` error or the Asyncify-era `SDL_malloc`/`null function`
-flood. Disc integrity becomes a later checkpoint.
+the old `getContext` error, the Asyncify-era `SDL_malloc`/`null function` flood,
+or the `cannot call main when async dependencies remain` launcher race. Disc
+integrity becomes the next checkpoint.
