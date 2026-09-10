@@ -279,8 +279,8 @@ void main01(void) {
 #ifdef __EMSCRIPTEN__
         // Without an explicit yield, the wasm main loop monopolizes the JS event
         // loop and the browser never gets a chance to flush rendering, dispatch
-        // input, or pump async I/O. Asyncify rewrites emscripten_sleep into a
-        // wasm suspend → JS yield → resume; a 0 ms sleep is the cheapest "hand
+        // input, or pump async I/O. JSPI lets emscripten_sleep suspend Wasm
+        // and resume after a JS event-loop turn; a 0 ms sleep is a simple "hand
         // control back to the browser for one tick" primitive available without
         // restructuring this loop into emscripten_set_main_loop. Placed at the
         // top so the `continue` after a failed aurora_begin_frame still yields.
@@ -328,7 +328,11 @@ void main01(void) {
 #if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
             if (em_loop_iter < 5) OSReport(">>> main01 iter=%d aurora_begin_frame returned FALSE\n", em_loop_iter - 1);
 #endif
-            DuskLog.debug("aurora_begin_frame returned false, skipping draw this frame");
+#ifdef __EMSCRIPTEN__
+            // Keep the worker available for SDL's proxied focus/visibility
+            // callbacks, without repeatedly attempting GPU work while hidden.
+            emscripten_sleep(16);
+#endif
             continue;
         }
 #if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE

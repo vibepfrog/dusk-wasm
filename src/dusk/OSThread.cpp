@@ -40,6 +40,9 @@ struct PCThreadData {
     void* param;
     bool started   = false;
     bool suspended = false;
+#ifdef __EMSCRIPTEN__
+    bool browserWorkerEnabled = false;
+#endif
 
     ~PCThreadData() {
         if (dusk::IsShuttingDown && nativeThread.joinable()) {
@@ -149,6 +152,14 @@ static void ThreadEntryWrapper(OSThread* thread, PCThreadData* data) {
 // ============================================================================
 
 extern "C" {
+
+#ifdef __EMSCRIPTEN__
+void OSEnableBrowserThread(OSThread* thread) {
+    if (auto* data = GetThreadData(thread)) {
+        data->browserWorkerEnabled = true;
+    }
+}
+#endif
 
 void __OSThreadInit(void) {
     memset(&sDefaultThread, 0, sizeof(OSThread));
@@ -367,20 +378,19 @@ s32 OSResumeThread(OSThread* thread) {
                 threadLock.unlock();
 
 #ifdef __EMSCRIPTEN__
-                // No -pthread support in this build (single-threaded wasm).
-                // Spawning std::thread here throws "thread constructor failed:
-                // Not supported" and the game silently loses every worker.
-                // Skip the spawn and log so the next debug pass can find which
-                // call sites actually need cooperative scheduling later (DVD,
-                // MemCard, audio decode are the obvious suspects).
+                // Several early web paths still run synchronously (notably
+                // DVD commands). Enable reviewed workers individually to avoid
+                // also starting duplicate or unported background processing.
+                if (!data->browserWorkerEnabled) {
 #if DUSK_TRACE_ENABLE
-                OSReport("[PC-OSThread] Skipping native thread spawn for %p (emscripten, no -pthread)\n", thread);
+                    OSReport("[PC-OSThread] Browser worker not enabled for %p\n", thread);
 #endif
-#else
+                    return prevSuspend;
+                }
+#endif
                 data->nativeThread = std::thread(ThreadEntryWrapper, thread, data);
 #if DUSK_TRACE_ENABLE
                 OSReport("[PC-OSThread] Started thread %p\n", thread);
-#endif
 #endif
             } else {
                 // Resume from suspension: signal the condition variable

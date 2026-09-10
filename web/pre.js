@@ -1,12 +1,6 @@
-/* web/pre.js — browser-disc worker handoff + IDBFS save rehydrate.
- *
- * Loaded via emcc --pre-js, so this runs during runtime initialization, before
- * main(). We mount an IndexedDB-backed virtual filesystem at /save (memory
- * cards) so save data persists across page reloads after FS.syncfs(false).
- *
- * On boot we issue FS.syncfs(true) to copy IndexedDB → MEMFS for /save;
- * addRunDependency defers main() until rehydrate completes so the game doesn't
- * start before its save state is visible.
+/* Browser-disc handoff and the persistent campaign startup gate.
+ * save_store.js is linked before this file. Its serialized snapshot queue is
+ * the only writer of /save; native card operations use /dusk/cards instead.
  */
 
 /* A browser File is structured-cloneable but cannot be placed in Wasm memory.
@@ -124,31 +118,50 @@
 
 Module.preRun = Module.preRun || [];
 Module.preRun.push(function () {
-    function mkdirIgnoreExists(path) {
-        try { FS.mkdir(path); } catch (e) { /* most likely EEXIST — fine */ }
-    }
-
-    mkdirIgnoreExists('/save');
-    FS.mount(IDBFS, {}, '/save');
+    if (typeof ENVIRONMENT_IS_PTHREAD !== 'undefined' && ENVIRONMENT_IS_PTHREAD) return;
 
     // SDL_GetPrefPath returns /libsdl/<OrgName>/<AppName>/ on emscripten and is
     // documented to create the tree, but the implementation in SDL3.4.4's
     // emscripten backend does NOT mkdir intermediate dirs — sqlite3_open and
     // friends then throw system_error: No such file or directory when they try
     // to write dawn_cache.db / pipeline_cache.db there. Pre-create defensively.
-    mkdirIgnoreExists('/libsdl');
-    mkdirIgnoreExists('/libsdl/TwilitRealm');
-    mkdirIgnoreExists('/libsdl/TwilitRealm/Dusk');
+    FS.mkdirTree('/libsdl/TwilitRealm/Dusk');
+
+    Module['duskSaves'] = globalThis.DuskSaveStore.create({
+        FS: FS, IDBFS: IDBFS,
+        logError: function (err) { console.error('[dusk] save storage:', err); },
+        acquireLock: function () {
+            return new Promise(function (resolve, reject) {
+                // IDBFS instances in two tabs otherwise overwrite each other's
+                // snapshots. Hold an origin-scoped lock until this tab closes.
+                if (!navigator.locks) {
+                    reject(new Error('This browser does not support exclusive save access.'));
+                    return;
+                }
+                navigator.locks.request('dusk-campaign-saves', { ifAvailable: true }, function (lock) {
+                    if (!lock) {
+                        reject(new Error('Another Dusk tab is using saves. Close that tab and reload this one.'));
+                        return;
+                    }
+                    resolve();
+                    return new Promise(function () {});
+                }).catch(reject);
+            });
+        },
+    });
 
     addRunDependency('idbfs-rehydrate');
-    FS.syncfs(true, function (err) {
-        if (err) {
-            console.warn('[pre.js] IDBFS rehydrate failed:', err);
-        }
-        // The card writer expects /save/GC/ to exist; create it after rehydrate so
-        // first-time users have a writable target. Region subdirs (e.g. "EUR/Card A/")
-        // are created on demand by Aurora's DolphinCardPath path-format result.
-        mkdirIgnoreExists('/save/GC');
+    Module['duskSaves'].initialize().catch(function (err) {
+        Module['duskSaveError'] = Module['duskSaves'].state().error;
+    }).finally(function () {
         removeRunDependency('idbfs-rehydrate');
+    });
+
+    window.addEventListener('beforeunload', function (event) {
+        var state = Module['duskSaves'].state();
+        if (state.writing || state.pending || state.dirty) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
     });
 });

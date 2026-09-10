@@ -14,6 +14,11 @@
 #include "dusk/main.h"
 #include "dusk/version.hpp"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+extern "C" void OSEnableBrowserThread(OSThread* thread);
+#endif
+
 #if PLATFORM_WII || PLATFORM_SHIELD
 #include <revolution/nand.h>
 #include <revolution/sc.h>
@@ -78,7 +83,15 @@ static OSThread MemCardThread;
 
 void mDoMemCd_Ctrl_c::ThdInit() {
     #if !PLATFORM_SHIELD
+#ifdef __EMSCRIPTEN__
+    // The browser restores completed GCI snapshots here before main starts.
+    // Keep the live card separate from IDBFS: a multi-write save must finish
+    // before any snapshot is persisted or offered for download.
+    CARDSetLoadType(CARD_GCIFOLDER);
+    CARDSetBasePath("/dusk/cards/", -1);
+#else
     CARDSetLoadType((CARDFileType)dusk::getSettings().backend.cardFileType.getValue());
+#endif
 
     char version[5] = {};
     char maker[3] = {};
@@ -103,6 +116,9 @@ void mDoMemCd_Ctrl_c::ThdInit() {
     OSInitCond(&mCond);
     OSCreateThread(&MemCardThread, (void*(*)(void*))mDoMemCd_main, NULL, MemCardStack + sizeof(MemCardStack),
                    sizeof(MemCardStack), OSGetThreadPriority(OSGetCurrentThread()) + 1, 1);
+#ifdef __EMSCRIPTEN__
+    OSEnableBrowserThread(&MemCardThread);
+#endif
     OSResumeThread(&MemCardThread);
 
     // "Memory Card Thread Init\n"
@@ -267,8 +283,11 @@ void mDoMemCd_Ctrl_c::save(void* i_buffer, u32 i_size, u32 i_position) {
 
 #if !PLATFORM_SHIELD
 void mDoMemCd_Ctrl_c::store() {
+#ifdef __EMSCRIPTEN__
+    MAIN_THREAD_EM_ASM({ Module['duskSaves'].beginWrite(); });
+#endif
     CARDFileInfo file;
-    s32 ret;
+    s32 ret = CARD_RESULT_FATAL_ERROR;
     field_0x1fc8 = 0;
 
     if (mCardState == CARD_STATE_NO_FILE_e) {
@@ -303,6 +322,9 @@ void mDoMemCd_Ctrl_c::store() {
         setCardState(ret);
     }
 
+#ifdef __EMSCRIPTEN__
+    MAIN_THREAD_EM_ASM({ Module['duskSaves'].endWrite($0 != 0); }, mCardState == CARD_STATE_WRITE_e);
+#endif
     field_0x1fc8 = 1;
 }
 #endif

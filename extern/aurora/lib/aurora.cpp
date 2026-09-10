@@ -351,6 +351,19 @@ const AuroraEvent* update() noexcept {
 bool begin_frame() noexcept {
   ZoneScoped;
 #ifdef AURORA_ENABLE_GX
+  {
+    window::SurfaceLock surfaceLock;
+    if (!window::is_presentable()) {
+      webgpu::release_surface();
+      return false;
+    }
+    if (window::is_paused()) {
+      return false;
+    }
+  }
+  // Check visibility BEFORE mapping buffers or opening a render pass. Once
+  // gfx::begin_frame succeeds, end_frame must retire that frame even if the
+  // tab becomes hidden during an asynchronous GPU wait.
   // gfx::begin_frame() yields the wasm thread (emscripten_sleep) while waiting
   // for the staging-buffer MapAsync callback. Under emscripten the browser
   // reclaims the swapchain texture during that yield — if we acquire the
@@ -371,16 +384,6 @@ bool begin_frame() noexcept {
     return false;
   }
 
-  {
-    window::SurfaceLock surfaceLock;
-    if (!window::is_presentable()) {
-      webgpu::release_surface();
-      return false;
-    }
-    if (window::is_paused()) {
-      return false;
-    }
-  }
   // g_currentView intentionally left empty here — populated by end_frame.
   g_currentView = {};
 #endif

@@ -29,15 +29,13 @@ aurora::Module Log("aurora::card");
 #if defined(__EMSCRIPTEN__)
 
 std::string ResolveDolphinCardPath(ECardSlot slot, const char* regionCode, bool isGciFolder) {
-  // Web build: cards live under /save/, which web/pre.js mounts as IDBFS so writes
-  // survive page reload via FS.syncfs(false). We don't gate on filesystem::exists
-  // the way the native branches do — pre.js runs FS.syncfs(true) before main(), so
-  // a returning user's card is already mounted at this path, and a first-time user
-  // gets a writable path the card system can create on first save.
+  // The browser restores committed IDBFS snapshots to this working directory
+  // before main. Completed campaign writes are snapshotted back to /save/GC;
+  // intermediate native writes must not modify that persistent staging mount.
   if (isGciFolder) {
-    return fmt::format("/save/GC/{}/Card {}", regionCode, slot == ECardSlot::SlotA ? 'A' : 'B');
+    return fmt::format("/dusk/cards/{}/Card {}", regionCode, slot == ECardSlot::SlotA ? 'A' : 'B');
   }
-  return fmt::format("/save/GC/MemoryCard{}.{}.raw", slot == ECardSlot::SlotA ? 'A' : 'B', regionCode);
+  return fmt::format("/dusk/cards/MemoryCard{}.{}.raw", slot == ECardSlot::SlotA ? 'A' : 'B', regionCode);
 }
 
 #elif WIN32

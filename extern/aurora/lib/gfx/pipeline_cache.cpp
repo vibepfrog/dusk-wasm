@@ -18,6 +18,10 @@
 #include <fmt/format.h>
 #include <tracy/Tracy.hpp>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 namespace aurora::gfx {
 static Module Log("aurora::gfx::pipeline_cache");
 
@@ -68,8 +72,24 @@ uint64_t bind_failures_this_frame = 0;
 uint64_t pipelines_created_this_frame = 0;
 uint64_t pipelines_drained_this_frame = 0;
 uint32_t frames_since_summary = 0;
+double compile_ms = 0.0;
+double longest_compile_ms = 0.0;
 }
 #endif
+
+template <typename Factory>
+static auto create_measured_pipeline(Factory&& create) {
+#ifdef __EMSCRIPTEN__
+  const double start = emscripten_get_now();
+#endif
+  auto result = create();
+#ifdef __EMSCRIPTEN__
+  const double elapsed = emscripten_get_now() - start;
+  diag::compile_ms += elapsed;
+  diag::longest_compile_ms = std::max(diag::longest_compile_ms, elapsed);
+#endif
+  return result;
+}
 static std::thread g_pipelineThread;
 static std::atomic_bool g_pipelineThreadEnd = false;
 static std::condition_variable g_pipelineCv;
@@ -185,7 +205,7 @@ static PipelineRef find_pipeline_impl(ShaderType type, const PipelineConfig& con
     } else {
       if (!g_hasPipelineThread && g_pipelinesPerFrame < BuildPipelinesPerFrame) {
         g_pipelines.try_emplace(hash, CachedPipeline{
-                                          .pipeline = cb(),
+                                          .pipeline = create_measured_pipeline(cb),
                                           .firstFrameUsed = firstFrameUsed,
                                       });
         if (persist) {
@@ -495,7 +515,7 @@ static void pipeline_worker() {
       pending = std::move(source.front());
       source.pop_front();
     }
-    auto result = pending.create();
+    auto result = create_measured_pipeline(pending.create);
     {
       std::lock_guard lock{g_pipelineMutex};
       g_pipelines.try_emplace(pending.hash, CachedPipeline{
@@ -691,7 +711,7 @@ static void drain_all_pending_pipelines_emscripten() {
       pending = std::move(source.front());
       source.pop_front();
     }
-    auto result = pending.create();
+    auto result = create_measured_pipeline(pending.create);
     {
       std::lock_guard lock{g_pipelineMutex};
       g_pipelines.try_emplace(pending.hash, CachedPipeline{
@@ -732,14 +752,16 @@ void end_pipeline_frame() {
     if (diag::bind_failures_this_frame > 0 || diag::pipelines_created_this_frame > 0 ||
         diag::pipelines_drained_this_frame > 0) {
       Log.info("[PipelineDiag] this_period: built={} drained_at_eof={} bind_fails={}"
-               " | totals: built={} bind_fails={} | pending_now={}",
+               " | totals: built={} bind_fails={} | pending_now={} | compile_ms={:.1f} longest_compile_ms={:.1f}",
                diag::pipelines_created_this_frame, diag::pipelines_drained_this_frame,
                diag::bind_failures_this_frame, diag::total_pipelines_created,
-               diag::total_bind_failures, pending_after);
+               diag::total_bind_failures, pending_after, diag::compile_ms, diag::longest_compile_ms);
     }
     diag::pipelines_created_this_frame = 0;
     diag::pipelines_drained_this_frame = 0;
     diag::bind_failures_this_frame = 0;
+    diag::compile_ms = 0.0;
+    diag::longest_compile_ms = 0.0;
   }
 #endif
 }

@@ -4,16 +4,83 @@
 
 The Emscripten build now compiles and links Dusk with shared WebAssembly memory,
 preloaded pthread workers, WebGPU, a transferred OffscreenCanvas, and a bounded
-browser disc stream. The user reports that their USA CISO boots and is quite
-playable, with startup texture corruption that clears after F11 twice and a
-minor flicker in the title scene's sun glow. Their URL contained
-`?build=a32f770`, but that query parameter does not pin the JavaScript/Wasm
-release, so the exact binaries used for that report are not established.
+browser disc stream. The user reports that their USA CISO is playable and that
+the texture corruption and sun-glow flicker both appear fixed after the
+bind-group lifetime change deployed as `ba4c2e1`. A `?build=` query parameter
+does not pin the JavaScript/Wasm release; it is only a convenient test label.
 
 Build `d1a066a` passed CI and a ROM-free Chrome test reached the enabled file
 chooser without the prior global-constructor exception. That verifies launcher
-readiness, not gameplay. The texture-cache fix below still needs comparison
-with the user's real disc and GPU.
+readiness, not gameplay. The remaining reported issues are occasional frame
+stutters, failure to resume after switching tabs, and missing persistent saves.
+
+## Tab resume and frame pacing
+
+The browser pause path now polls SDL events without `SDL_WaitEvent`. SDL 3.4.4
+proxies visibility callbacks to the application worker; its blocking wait loop
+can prevent that worker from receiving the callback needed to resume. Paused
+iterations instead use a 16 ms JSPI sleep. Visibility/pause checks also precede
+GPU buffer mapping and render-pass setup, so a rejected frame cannot leave an
+unfinished pass or mapped staging buffer behind. A frame already begun is
+retired normally even if the tab becomes hidden during an async GPU wait.
+
+The web frame limiter uses `emscripten_sleep` instead of `SDL_DelayPrecise`,
+allowing event and GPU callbacks during the wait. It retains the existing
+simulation rate and oversleep compensation. This does not eliminate first-use
+shader compilation: required pipelines still compile before drawing to avoid
+reintroducing missing geometry. `[PipelineDiag]` reports total and longest CPU
+pipeline-creation time per summary period alongside existing `[FrameProfile]`
+frame timings. These are CPU timings, not GPU execution measurements.
+
+## Campaign saves and Windows transfer
+
+Use the in-game Save option (Start/Enter opens the pause menu with default
+controls). The top-right **Saves** panel displays storage status and provides
+downloads and imports. Wait for **Saved on this device** before closing the
+tab. Saving stores campaign progress at the game's supported save points; it
+does not capture an arbitrary emulator-style save state.
+
+For a USA campaign, the portable file is `01-GZ2E-gczelda2.gci`. Close Windows
+Dusklight and back up its existing file, then copy the download into
+`%APPDATA%\TwilitRealm\Dusklight\USA\Card A`. Older Dusk builds use
+`%APPDATA%\TwilitRealm\Dusk\USA\Card A`. For the reverse direction, choose
+**Import Windows save (.gci)** before starting the browser game. Use matching
+disc/save regions; EUR uses `GZ2P` and the `EUR` folder. A GCI contains all three
+campaign slots. See the [upstream save guide](https://twilitrealm.dev/faq/).
+
+The browser and current upstream source use a 0x8000-byte card payload, 0x40-byte
+GCI header, three 0xA94-byte quest logs, and save-data version 6. We copy GCI
+bytes without conversion. Transport/persistence regression tests use synthetic
+data; actual campaign interchange with the user's Windows build still needs
+an in-game test.
+
+Native card writes use `/dusk/cards/<region>/Card A`. After a successful complete
+memory-card transaction, the browser snapshots the bytes and serializes
+`FS.syncfs(false)` against `/save/GC` on IDBFS. Separating live writes from
+persistent snapshots prevents asynchronous sync or downloads from capturing a
+partly written card. Startup hydrates IDBFS before copying snapshots into the
+working card directory and enabling the disc chooser. Hydration failure blocks
+startup without writing to the database. An origin-scoped Web Lock prevents
+two Dusk tabs from overwriting each other's saves.
+
+The memory-card worker explicitly opts into native pthread creation through
+`OSEnableBrowserThread`. The early port disabled all GameCube OS thread spawns;
+without this opt-in, the game never executes card commands. Other GameCube OS
+workers remain under their existing synchronous web paths pending separate
+audits. The six-worker Emscripten pool has capacity for this added card worker.
+
+Import validates the title, region, internal filename, block count, and length.
+Replacement requires confirmation and retains the previous campaign under
+`/save/backups`, outside the native card reader's directory. Imports are disabled
+once the game starts. Storage failures remain visible with retry and download
+options. A tab-close warning is requested while saving or while changes have
+not reached storage; browsers cannot guarantee completion if forcibly closed.
+
+Saves belong to the browser profile and hosting origin. Export/import is needed
+when moving from GitHub Pages to Cloudflare Pages, another browser, or Windows.
+Clearing site data removes browser saves, so keep downloaded backups. Earlier
+builds mounted `/save` but wrote cards under `/libsdl` and never flushed them;
+their in-memory saves do not survive reloads.
 
 Aurora's WebGPU startup uses synchronous `WaitAny()` calls for the browser's
 asynchronous adapter and device requests, so emdawnwebgpu needs a promise-aware
@@ -84,15 +151,9 @@ retention after the original owner releases a resource, move safety, duplicate
 bindings, empty groups, and balanced release over 1,000 eviction cycles. CI
 compiles this test to Wasm and runs it in Node without a GPU or disc.
 
-This is a concrete lifetime defect and matches the F11 cache-clearing symptom;
-whether it explains all of the user's corrupted textures requires gameplay
-validation. No automatic resize or periodic cache flush is used to hide it.
-
-The sun-glow cause is still unconfirmed. `dKyr_sun_move` samples five depth
-points, while `depth_peek.cpp` provides asynchronous snapshots at up to 30 Hz.
-The next investigation should compare the affected scene before and after
-resize, then check snapshot timing and depth contents if flicker persists.
-Do not change glow visibility or depth thresholds without that evidence.
+The user reports that both initial texture corruption and sun-glow flicker are
+now fixed. No automatic resize or periodic cache flush is used to hide them,
+and no changes to glow visibility or depth thresholds were needed.
 
 ## Render-worker canvas ownership
 
@@ -135,6 +196,7 @@ cmake --build --preset web-emscripten-fast --parallel
 node web/check_build.mjs build/web-emscripten-fast/web
 node --test web/iso_bridge.test.mjs
 node --test web/shell_runtime.test.mjs
+node --test web/save_store.test.mjs
 ```
 
 The hosting origin must return these response headers:

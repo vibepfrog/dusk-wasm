@@ -617,6 +617,7 @@ if (EMSCRIPTEN)
         --profiling-funcs
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/res@/res"
         "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
+        "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/save_store.js"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/pre.js"
         # Provide JS shims for Rust panic_unwind imports (nod's transitive deps
         # may use panic=unwind even with our workspace panic=abort env). Without
@@ -628,12 +629,17 @@ if (EMSCRIPTEN)
     # explicitly so editing the shell or the pre-js triggers a re-link.
     set_property(TARGET dusk APPEND PROPERTY LINK_DEPENDS
         "${CMAKE_SOURCE_DIR}/web/shell.html"
+        "${CMAKE_SOURCE_DIR}/web/save_store.js"
+        "${CMAKE_SOURCE_DIR}/web/save_ui.js"
         "${CMAKE_SOURCE_DIR}/web/pre.js"
         "${CMAKE_SOURCE_DIR}/web/unwind_shim.js"
     )
     # iso_bridge.js is loaded by the HTML shell at runtime (file picker → worker handoff),
     # not linked into the wasm — copy it next to index.html so the <script> tag resolves.
     add_custom_command(TARGET dusk POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/web/save_ui.js"
+            "${CMAKE_BINARY_DIR}/web/save_ui.js"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/web/iso_bridge.js"
             "${CMAKE_BINARY_DIR}/web/iso_bridge.js"

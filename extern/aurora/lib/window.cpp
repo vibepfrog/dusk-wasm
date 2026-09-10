@@ -231,6 +231,10 @@ const AuroraEvent* poll_events() {
   SDL_Event event;
   // Clear out the previous scroll values to prevent ghost input
   input::set_mouse_scroll(0, 0);
+#ifndef __EMSCRIPTEN__
+  // Browser events are proxied onto this worker's JS event loop. Blocking
+  // here prevents the visibility/focus callback that would wake us up.
+  // The browser main loop polls, then cooperatively sleeps while paused.
   if (is_paused()) {
     if (SDL_WaitEvent(&event)) {
       process_event(event);
@@ -238,9 +242,11 @@ const AuroraEvent* poll_events() {
       Log.warn("SDL_WaitEvent failed: {}", SDL_GetError());
     }
   }
+#endif
   while (SDL_PollEvent(&event)) {
     process_event(event);
   }
+  sync_paused();
   g_events.push_back(AuroraEvent{
       .type = AURORA_NONE,
   });

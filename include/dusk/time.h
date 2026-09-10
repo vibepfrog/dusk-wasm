@@ -6,6 +6,10 @@
 
 #include "SDL3/SDL_timer.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -97,6 +101,13 @@ private:
       _mm_pause();
 #endif
     } while (current.QuadPart - start.QuadPart < ticksToWait);
+  }
+#elif defined(__EMSCRIPTEN__)
+  void NanoSleep(const duration_t duration) {
+    // SDL_DelayPrecise blocks/spins on a pthread. Yield through JSPI instead,
+    // so input and GPU completion callbacks can run during the frame budget.
+    // Retain the limiter's measured oversleep compensation and simulation rate.
+    emscripten_sleep(static_cast<unsigned int>((duration + 999999ULL) / 1000000ULL));
   }
 #else
   void NanoSleep(const duration_t duration) { SDL_DelayPrecise(duration); }

@@ -68,6 +68,7 @@ function launch(html, unavailable) {
         crypto: { randomUUID: () => 'launcher-regression-test' },
         console: { log() {}, warn() {}, error(...args) { errors.push(args); } },
         addEventListener() {},
+        duskSaveUI: { attach() {} },
         duskIsoImport: {
             importIso(file) {
                 calls.push(['import', file]);
@@ -83,6 +84,7 @@ function launch(html, unavailable) {
     runInNewContext(inline[0], context, { filename: 'dusk-launcher.js', timeout: 1000 });
     assert.equal(typeof context.Module?.onRuntimeInitialized, 'function', 'runtime callback is required');
     assert.equal(context.Module.noInitialRun, true, 'main must not auto-start before disc selection');
+    context.Module.duskSaves = { startGame() {} };
     context.Module.callMain = args => {
         assert.ok(ready, 'main must not run before onRuntimeInitialized');
         calls.push(['main', ...args]);
@@ -154,6 +156,17 @@ export async function checkShellRuntime(html) {
         assert.equal(blocked.calls.length, 0, feature + ': unsupported browser must not launch');
     }
     checks.push('runtime readiness preserves all five browser capability guards');
+
+    const failedStorage = launch(html);
+    failedStorage.module.duskSaveError = 'Saved games could not be opened.';
+    failedStorage.ready();
+    failedStorage.select();
+    failedStorage.drop();
+    await flushTasks();
+    assert.equal(failedStorage.input.disabled, true, 'failed save hydration must block game startup');
+    assert.equal(failedStorage.calls.length, 0);
+    assert.match(failedStorage.nodes['import-status'].textContent, /Saved games could not be opened/);
+    checks.push('failed save hydration blocks startup without overwriting storage');
 
     for (const asynchronous of [false, true]) {
         const failed = launch(html);

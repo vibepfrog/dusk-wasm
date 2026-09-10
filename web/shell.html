@@ -7,6 +7,7 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20viewBox%3D'0%200%2032%2032'%3E%3Crect%20width%3D'32'%20height%3D'32'%20fill%3D'%230b0b0d'/%3E%3Ctext%20x%3D'16'%20y%3D'22'%20font-family%3D'sans-serif'%20font-size%3D'18'%20fill%3D'%236cb6ff'%20text-anchor%3D'middle'%3ED%3C/text%3E%3C/svg%3E">
     <script src="coi-serviceworker.js"></script>
     <script src="iso_bridge.js" defer></script>
+    <script src="save_ui.js"></script>
     <style>
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
             background: #0b0b0d; color: #e6e6e6;
@@ -39,6 +40,17 @@
         #import-status.error { color: #ff6b6b; white-space: pre-wrap; text-align: left;
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
             font-size: 12px; line-height: 1.5; }
+        #saves-panel { position: fixed; top: 10px; right: 10px; z-index: 20;
+            max-width: min(380px, calc(100vw - 40px)); padding: 10px 14px;
+            border: 1px solid #44444e; border-radius: 8px; background: #16161af5;
+            font-size: 13px; line-height: 1.5; max-height: 85vh; overflow-y: auto; }
+        #saves-panel summary { cursor: pointer; font-weight: 600; }
+        #saves-panel p { margin: 10px 0; }
+        #saves-panel button { margin: 4px 6px 4px 0; padding: 6px 10px; cursor: pointer; }
+        #saves-panel a { color: #8dcaff; }
+        #saves-panel code { overflow-wrap: anywhere; }
+        #save-file { display: none; }
+        #save-status.error, #save-message { color: #ffbc8c; }
     </style>
 </head>
 <body>
@@ -63,6 +75,23 @@
     </div>
 
     <div id="boot-status"></div>
+
+    <details id="saves-panel">
+        <summary>Saves</summary>
+        <p id="save-status" role="status">Opening saved games…</p>
+        <div id="save-list"></div>
+        <p>Use the in-game Save option, then wait for “Saved on this device” before closing the tab.</p>
+        <label id="save-pick" class="pick-btn" for="save-file" aria-disabled="true">Import Windows save (.gci)</label>
+        <input id="save-file" type="file" accept=".gci" disabled>
+        <p id="save-import-hint">Import before choosing your disc.</p>
+        <button id="save-retry" hidden>Retry storage</button>
+        <p id="save-message" role="status"></p>
+        <p>For Windows, close Dusklight and copy the downloaded USA save to:<br>
+            <code>%APPDATA%\TwilitRealm\Dusklight\USA\Card A</code><br>
+            Keep a backup of any file you replace. Older Dusk builds use <code>TwilitRealm\Dusk</code>.
+            <a href="https://twilitrealm.dev/faq/" target="_blank" rel="noopener">Save transfer guide</a></p>
+        <p>A campaign file contains all three save slots. Downloads also let you move saves to another browser or website address.</p>
+    </details>
 
     <script>
     (function () {
@@ -129,6 +158,7 @@
                 }
 
                 try {
+                    Module.duskSaves.startGame();
                     var mainResult = Module.callMain([result.path]);
                     if (mainResult && typeof mainResult.then === 'function') {
                         mainResult.catch(handleMainFailure);
@@ -201,6 +231,11 @@
             onRuntimeInitialized: function () {
                 bootStatusEl.textContent = '';
                 resolveRuntimeReady();
+                window.duskSaveUI.attach(Module.duskSaves);
+                if (Module.duskSaveError) {
+                    capabilityError = Module.duskSaveError;
+                    setStatus(capabilityError, true);
+                }
                 if (!capabilityError) {
                     fileInput.disabled = false;
                     pickButton.setAttribute('aria-disabled', 'false');

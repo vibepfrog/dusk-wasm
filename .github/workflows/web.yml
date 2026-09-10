@@ -35,6 +35,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test browser saves and launcher
+        run: node --test web/save_store.test.mjs web/shell_runtime.test.mjs web/iso_bridge.test.mjs
+
       # ── Toolchain setup ────────────────────────────────────────────────
       - name: Setup pinned Rust nightly
         uses: dtolnay/rust-toolchain@master
