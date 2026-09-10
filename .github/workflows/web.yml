@@ -194,6 +194,14 @@ jobs:
       - name: Build
         run: cmake --build --preset web-emscripten-fast --parallel
 
+      - name: Test WebGPU cache handle lifetime
+        run: |
+          em++ -std=c++20 -O1 --use-port=emdawnwebgpu \
+            -sENVIRONMENT=node -sEXIT_RUNTIME=1 \
+            extern/aurora/tests/bind_group_cache_test.cpp \
+            -o build/web-emscripten-fast/bind_group_cache_test.js
+          node build/web-emscripten-fast/bind_group_cache_test.js
+
       # Sanity-check the threaded bundle before we ship
       # anything to Pages; a missing .data or .wasm would still "deploy"
       # but break at runtime with an opaque fetch error.

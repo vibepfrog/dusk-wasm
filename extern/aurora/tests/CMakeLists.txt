@@ -12,6 +12,11 @@ if (NOT TARGET gtest)
 endif ()
 
 if (AURORA_ENABLE_GX)
+  # Uses fake C handles with the real C++ wrappers; no GPU or game disc needed.
+  add_executable(bind_group_cache_tests bind_group_cache_test.cpp)
+  target_link_libraries(bind_group_cache_tests PRIVATE dawn::dawncpp_headers)
+  add_test(NAME bind_group_cache_tests COMMAND bind_group_cache_tests)
+
   # GX FIFO round-trip tests
   # Compile GX sources directly to avoid pulling in the full renderer/WebGPU runtime
   add_executable(gx_fifo_tests

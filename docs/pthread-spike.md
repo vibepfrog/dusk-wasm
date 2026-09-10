@@ -4,13 +4,16 @@
 
 The Emscripten build now compiles and links Dusk with shared WebAssembly memory,
 preloaded pthread workers, WebGPU, a transferred OffscreenCanvas, and a bounded
-browser disc stream. Static and Node regression tests pass. Before the JSPI
-switch, a real Chrome run reached WebGPU adapter selection but then hit the
-SDL pointer-event failure described below. The first JSPI test instead stopped
-at an earlier launcher race; it does not yet establish whether JSPI fixes that
-SDL failure. A subsequent ROM-free browser test exposed a JSPI/legacy-exception
-incompatibility in global construction, now addressed by the native exception
-configuration below. Browser validation beyond startup remains outstanding.
+browser disc stream. The user reports that their USA CISO boots and is quite
+playable, with startup texture corruption that clears after F11 twice and a
+minor flicker in the title scene's sun glow. Their URL contained
+`?build=a32f770`, but that query parameter does not pin the JavaScript/Wasm
+release, so the exact binaries used for that report are not established.
+
+Build `d1a066a` passed CI and a ROM-free Chrome test reached the enabled file
+chooser without the prior global-constructor exception. That verifies launcher
+readiness, not gameplay. The texture-cache fix below still needs comparison
+with the user's real disc and GPU.
 
 Aurora's WebGPU startup uses synchronous `WaitAny()` calls for the browser's
 asynchronous adapter and device requests, so emdawnwebgpu needs a promise-aware
@@ -57,6 +60,39 @@ same options through cc-rs environment variables; Rust remains panic=abort.
 The build verifier rejects any remaining `invoke_*` Wasm imports and requires
 the native C++ exception tag. Constructors still run synchronously; this change
 does not make all exports asynchronous or skip global initialization.
+
+## Texture cache handle lifetime
+
+Aurora hashes the C resource handles in a bind-group descriptor and retains the
+resulting bind group in a cache. In the pinned
+[Emdawn v20251002.162335 package](https://github.com/google/dawn/releases/tag/v20251002.162335),
+`wgpuDeviceCreateBindGroup` resolves descriptor handles to JavaScript resources;
+it does not retain the C texture-view, sampler, buffer, or layout handles.
+Those handles are separately reference-counted C++ objects. Their addresses can
+therefore be recycled while a cached bind group still holds the old JS texture.
+An identical descriptor hash then returns the old texture binding.
+
+`CachedBindGroup` now owns C++ references to the layout and all descriptor
+resources until expiration or cache clearing. This prevents handle reuse during
+the entry's lifetime. The existing 32-frame retention and 16-frame sweep remain
+in effect; references are released with the entry, including after container
+moves. This adds small CPU-side reference storage, not copies of texture pixels.
+
+`bind_group_cache_test.cpp` uses the actual WebGPU C++ wrappers and a fake C
+handle allocator that deliberately reuses released addresses. It verifies
+retention after the original owner releases a resource, move safety, duplicate
+bindings, empty groups, and balanced release over 1,000 eviction cycles. CI
+compiles this test to Wasm and runs it in Node without a GPU or disc.
+
+This is a concrete lifetime defect and matches the F11 cache-clearing symptom;
+whether it explains all of the user's corrupted textures requires gameplay
+validation. No automatic resize or periodic cache flush is used to hide it.
+
+The sun-glow cause is still unconfirmed. `dKyr_sun_move` samples five depth
+points, while `depth_peek.cpp` provides asynchronous snapshots at up to 30 Hz.
+The next investigation should compare the affected scene before and after
+resize, then check snapshot timing and depth contents if flicker persists.
+Do not change glow visibility or depth thresholds without that evidence.
 
 ## Render-worker canvas ownership
 
@@ -128,21 +164,21 @@ in the repository or deployment artifact.
 
 ## Build size and hosting
 
-The last locally verified release bundle was 43.11 MB total. `index.wasm` was
-34,661,319 bytes (34.66 MB raw, about 9.73 MB gzip). That exceeds Cloudflare
-Pages' 25 MiB per-file limit, so production should use Pages for the shell and
-an R2/custom-domain origin for the Wasm binary with compatible CORS/CORP
-headers. The GitHub Pages preview uses `coi-serviceworker.js` to attach the
+The CI-verified `d1a066a` bundle is 29.39 MB total; `index.wasm` is 21.01 MB and
+`index.data` is 7.99 MB. Each asset fits under Cloudflare Pages'
+[25 MiB per-file limit](https://developers.cloudflare.com/pages/platform/limits/#file-size).
+The earlier 34.66 MB Wasm measurement came from the larger Asyncify build and
+is obsolete. A separate R2 origin is therefore not required by the current
+asset sizes; recheck sizes on future builds. The GitHub Pages preview uses
+`coi-serviceworker.js` to attach the
 required isolation headers on a static host that does not support custom
 response headers; it reloads once after the service worker takes control.
 
 ## Next test
 
-Use a clean, user-owned USA or EUR image. The immediate target is a USA CISO
-whose logical GameCube identity is `GZ2E01` (retail serial `DOL-GZ2E-USA`). A
-native validation failure indicates a modified, lossy, corrupt, or unsupported
-dump; do not weaken the hash gate to make such an image boot. The corrected run
-should advance past the two benign Windows `powerPreference` warnings without
-the old `getContext` error, the Asyncify-era `SDL_malloc`/`null function` flood,
-or the `cannot call main when async dependencies remain` launcher race. Disc
-integrity becomes the next checkpoint.
+After deployment, hard-refresh the preview and use the same USA CISO that the
+user has already booted successfully. First observe the title scene without
+pressing F11. Check whether startup textures are correct and whether the glow
+still flickers. If corruption remains, capture it before and after F11 twice,
+plus the first WebGPU validation error (if any) and the browser/GPU versions.
+There is no reason to replace the working CISO for this graphics test.

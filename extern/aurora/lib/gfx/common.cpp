@@ -5,6 +5,7 @@
 #endif
 
 #include "clear.hpp"
+#include "bind_group_cache.hpp"
 #include "depth_peek.hpp"
 #include "../internal.hpp"
 #include "../webgpu/gpu.hpp"
@@ -88,11 +89,6 @@ inline HashType xxh3_hash(const wgpu::SamplerDescriptor& input, HashType seed) {
 
 namespace aurora::gfx {
 namespace {
-struct CachedBindGroup {
-  wgpu::BindGroup bindGroup;
-  uint32_t lastUsedFrame = 0;
-};
-
 constexpr uint32_t BindGroupCacheRetainFrames = 32;
 constexpr uint32_t BindGroupCacheSweepPeriod = 16;
 } // namespace
@@ -1117,10 +1113,7 @@ BindGroupRef bind_group_ref(const WGPUBindGroupDescriptor& descriptor) {
   const auto it = g_cachedBindGroups.find(id);
   if (it == g_cachedBindGroups.end()) {
     auto bg = wgpu::BindGroup::Acquire(wgpuDeviceCreateBindGroup(g_device.Get(), &descriptor));
-    g_cachedBindGroups.emplace(id, CachedBindGroup{
-                                       .bindGroup = std::move(bg),
-                                       .lastUsedFrame = g_frameIndex,
-                                   });
+    g_cachedBindGroups.emplace(id, CachedBindGroup{descriptor, std::move(bg), g_frameIndex});
   } else {
     it->second.lastUsedFrame = g_frameIndex;
   }
