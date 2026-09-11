@@ -33,7 +33,7 @@ void update_capture() {
     const bool menu = ui::any_document_visible() || g_imguiConsole.IsMenuVisible() ||
                       (ImGui::GetCurrentContext() &&
                        (ImGui::GetIO().WantCaptureMouse || ImGui::GetIO().WantTextInput));
-    const bool wanted = focused && !menu && (game.enableMouseCamera || mouse_aim);
+    const bool wanted = focused && !menu && (game.enableMouseCamera.getValue() || mouse_aim);
 #ifdef __EMSCRIPTEN__
     if (wanted != s_capture_wanted) {
         // Pointer lock itself hides the browser cursor. Undo the legacy idle
@@ -84,10 +84,11 @@ void get_relative_motion(float& x, float& y) { x = s_x; y = s_y; }
 void get_camera_deltas(float& yaw, float& pitch) {
     const auto& game = getSettings().game;
     yaw = pitch = 0.0f;
-    if (!game.enableMouseCamera) return;
-    yaw = -s_x * kMousePixelToRad * game.mouseCameraSensitivity;
-    pitch = -s_y * kMousePixelToRad * game.mouseCameraSensitivity;
-    if (game.enableMirrorMode) yaw = -yaw;
-    if (game.invertMouseY) pitch = -pitch;
+    if (!game.enableMouseCamera.getValue()) return;
+    const float sensitivity = game.mouseCameraSensitivity.getValue();
+    yaw = -s_x * kMousePixelToRad * sensitivity;
+    pitch = -s_y * kMousePixelToRad * sensitivity;
+    if (game.enableMirrorMode.getValue()) yaw = -yaw;
+    if (game.invertMouseY.getValue()) pitch = -pitch;
 }
 }
