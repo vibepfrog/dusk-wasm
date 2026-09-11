@@ -131,6 +131,9 @@ struct UserSettings {
         ConfigVar<bool> midnasLamentNonStop;
 
         // Input
+        ConfigVar<bool> enableMouseCamera;
+        ConfigVar<float> mouseCameraSensitivity;
+        ConfigVar<bool> invertMouseY;
         ConfigVar<GyroMode> gyroMode;
         ConfigVar<bool> enableGyroAim;
         ConfigVar<bool> enableGyroRollgoal;

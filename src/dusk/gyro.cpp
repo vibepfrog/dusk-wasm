@@ -1,9 +1,8 @@
 #include "dusk/gyro.h"
+#include "dusk/mouse.h"
 #include "dusk/ui/ui.hpp"
 #include "d/actor/d_a_alink.h"
 
-#include <aurora/lib/window.hpp>
-#include <SDL3/SDL_mouse.h>
 #include <cmath>
 
 namespace dusk::gyro {
@@ -22,8 +21,6 @@ bool  s_sensor_enabled        = false;
 bool  s_accel_enabled         = false;
 bool  s_was_aiming            = false;
 bool  s_have_gravity_baseline = false;
-bool  s_mouse_enabled         = false;
-bool  s_mouse_relative        = false;
 float s_smooth_gx             = 0.0f;
 float s_smooth_gy             = 0.0f;
 float s_smooth_gz             = 0.0f;
@@ -43,7 +40,6 @@ void reset_filter_state() {
     s_baseline_gravity_y = s_baseline_gravity_z = 0.0f;
     s_was_aiming = false;
     s_have_gravity_baseline = false;
-    s_mouse_enabled = false;
     s_yaw_rad = s_pitch_rad = s_roll_rad = 0.0f;
     s_rollgoal_ax = s_rollgoal_az = 0;
 }
@@ -96,23 +92,6 @@ void read(float dt) {
 
     const bool mouse_mode = getSettings().game.gyroMode.getValue() == GyroMode::Mouse;
     const bool mouse_gyro_active = !ui::any_document_visible() && mouse_mode && (aim_active || s_sensor_keep_alive);
-    SDL_Window* window = aurora::window::get_sdl_window();
-    if (window != nullptr && mouse_gyro_active != s_mouse_relative &&
-        SDL_SetWindowRelativeMouseMode(window, mouse_gyro_active))
-    {
-        s_mouse_relative = mouse_gyro_active;
-    }
-
-    if (mouse_gyro_active && !s_mouse_enabled && window != nullptr) {
-        const AuroraWindowSize sz = aurora::window::get_window_size();
-        const float cx = static_cast<float>(sz.width) * 0.5f;
-        const float cy = static_cast<float>(sz.height) * 0.5f;
-        SDL_WarpMouseInWindow(window, cx, cy);
-        float discard_x = 0.0f;
-        float discard_y = 0.0f;
-        SDL_GetRelativeMouseState(&discard_x, &discard_y);
-    }
-    s_mouse_enabled = mouse_gyro_active;
 
     if (!s_sensor_keep_alive && !aim_active) {
         disable_pad_sensors();
@@ -138,7 +117,7 @@ void read(float dt) {
 
         float mx_rel = 0.0f;
         float my_rel = 0.0f;
-        SDL_GetRelativeMouseState(&mx_rel, &my_rel);
+        mouse::get_relative_motion(mx_rel, my_rel);
         // Convert pixels to radians
         s_pitch_rad = my_rel * kMousePixelToRad * getSettings().game.gyroSensitivityY;
         s_yaw_rad = -mx_rel * kMousePixelToRad * getSettings().game.gyroSensitivityX;

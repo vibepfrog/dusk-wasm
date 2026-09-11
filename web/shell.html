@@ -60,6 +60,9 @@
         #enhancements summary { cursor: pointer; }
         #enhancements input[type="file"] { max-width: 100%; margin-top: 10px; }
         #enhancements p { margin: 8px 0; }
+        #mouse-status { position: fixed; bottom: 12px; left: 12px; z-index: 15;
+            padding: 6px 10px; border-radius: 5px; background: #16161ae6;
+            color: #d8d8df; font-size: 12px; pointer-events: none; }
         #drop-zone { overflow-y: auto; }
         .drop-card { max-height: calc(100vh - 60px); overflow-y: auto; }
     </style>
@@ -98,6 +101,7 @@
     </div>
 
     <div id="boot-status"></div>
+    <div id="mouse-status" role="status" hidden></div>
 
     <details id="saves-panel">
         <summary>Saves</summary>
@@ -249,6 +253,7 @@
             print: function (text) { console.log(text); },
             printErr: function (text) { console.warn(text); },
             onAbort: function (reason) {
+                if (window.duskMouseInput) window.duskMouseInput.setEnabled(false);
                 var error = new Error('abort: ' + reason);
                 console.error('[dusk] onAbort:', reason);
                 console.error('[dusk] wasm stack at abort:\n' + (error.stack || '<no stack>'));
@@ -292,6 +297,7 @@
         }
 
         window.onerror = function (message, source, line, column, error) {
+            if (window.duskMouseInput) window.duskMouseInput.setEnabled(false);
             bootStatusEl.textContent = 'error - check console';
             console.error('[dusk] window.onerror:', message);
             if (error && error.stack) console.error('[dusk] window.onerror stack:\n' + error.stack);

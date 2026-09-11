@@ -8,6 +8,7 @@ import { checkShellRuntime } from './shell_runtime_check.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const buildDir = resolve(process.argv[2] || join(__dirname, '..', 'build', 'web-emscripten-fast', 'web'));
 const failures = [];
+const checkCloudflare = process.argv.includes('--cloudflare');
 
 function fail(message) { failures.push(message); console.error('FAIL: ' + message); }
 function ok(message) { console.log('ok:   ' + message); }
@@ -42,6 +43,9 @@ for (const name of expected) {
     }
     sizes[name] = size;
     ok(name.padEnd(15) + ' ' + bytes(size));
+    if (checkCloudflare && size > 25 * 1024 * 1024) {
+        fail(name + ' exceeds the Cloudflare Pages 25 MiB per-file limit');
+    }
 }
 
 if (sizes['index.wasm']) {

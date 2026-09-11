@@ -199,8 +199,10 @@ const Rml::String kBloomHelpText =
 const Rml::String kBloomBrightnessHelpText =
     "Configure bloom intensity. Higher values make bright areas glow more strongly.";
 const Rml::String kUnlockFramerateHelpText =
-    "Uses inter-frame interpolation to enable higher frame rates.<br/><br/>May introduce minor "
-    "visual artifacts or animation glitches.";
+    "Renders interpolated frames above 30 FPS while game logic stays at 30 updates per second. "
+    "In the browser, Enable VSync paces these frames to the display refresh rate.<br/><br/>"
+    "May introduce minor visual artifacts or animation glitches. Turbo temporarily bypasses "
+    "normal game timing.";
 
 int float_setting_percent(ConfigVar<float>& var) {
     return static_cast<int>(var.getValue() * 100.0f + 0.5f);
@@ -641,6 +643,17 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         config_percent_select(leftPane, rightPane, getSettings().game.freeCameraSensitivity,
             "Free Camera Sensitivity", "Adjusts twin-stick camera sensitivity.", 50, 200, 5,
             [] { return !getSettings().game.freeCamera; });
+
+        leftPane.add_section("Mouse");
+        addOption("Mouse Camera", getSettings().game.enableMouseCamera,
+            "Rotate the third-person camera with mouse movement. Click the game to capture the "
+            "mouse; Escape releases it. F1 opens settings. Free Camera does not need to be enabled.");
+        config_percent_select(leftPane, rightPane, getSettings().game.mouseCameraSensitivity,
+            "Mouse Camera Sensitivity", "Adjusts mouse camera rotation sensitivity.", 25, 400, 5,
+            [] { return !getSettings().game.enableMouseCamera; });
+        addOption("Invert Mouse Y", getSettings().game.invertMouseY,
+            "Invert vertical mouse camera movement.",
+            [] { return !getSettings().game.enableMouseCamera; });
 
         leftPane.add_section("Gyro");
         leftPane.register_control(

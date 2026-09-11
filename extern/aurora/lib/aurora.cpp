@@ -23,6 +23,8 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include <algorithm>
+#include <array>
 #endif
 
 namespace aurora {
@@ -40,7 +42,7 @@ char g_gameName[4];
 //
 //  (2) Per-iter (main-loop) profiler. on_iter_begin/on_iter_end
 //      bracket a complete main01 iteration. We accumulate min/avg/max
-//      iter time + heap usage; every kPeriodFrames frames we dump a
+//      iter time + heap usage; every five seconds we dump a
 //      summary so the user can spot frame-time spikes, slow
 //      steady-state, or growing heap (potential leak).
 //
@@ -62,7 +64,11 @@ constexpr double log_threshold_ms = 5.0;
 constexpr uint32_t log_throttle_after = 8; // after N warnings, log every 60th
 
 // -- (2) per-iter profiler --
-constexpr uint32_t kPeriodFrames = 60;
+constexpr double kProfilePeriodMs = 5000.0;
+std::array<double, 2048> iter_samples{};
+uint32_t render_count = 0;
+uint32_t sim_tick_count = 0;
+uint32_t interpolated_render_count = 0;
 double iter_start_at_ms = 0.0;
 double iter_sum_ms = 0.0;
 double iter_min_ms = 1e9;
@@ -89,6 +95,12 @@ extern "C" void aurora_frame_diag_note_yield() noexcept {
   }
 }
 
+extern "C" void aurora_frame_diag_render_tick(int sim_ticks, bool interpolating) noexcept {
+  ++frame_diag::render_count;
+  frame_diag::sim_tick_count += sim_ticks;
+  if (interpolating) ++frame_diag::interpolated_render_count;
+}
+
 // Called once per main-loop iteration, at the SAME position each time.
 // Measures the wall-clock delta from the previous call → this call as the
 // duration of the previous iter. Doing it this way (instead of a paired
@@ -108,10 +120,11 @@ extern "C" void aurora_frame_diag_iter_tick() noexcept {
   frame_diag::iter_sum_ms += iter_ms;
   frame_diag::iter_min_ms = std::min(frame_diag::iter_min_ms, iter_ms);
   frame_diag::iter_max_ms = std::max(frame_diag::iter_max_ms, iter_ms);
+  frame_diag::iter_samples[frame_diag::iter_count % frame_diag::iter_samples.size()] = iter_ms;
   ++frame_diag::iter_count;
   ++frame_diag::total_iter_count;
 
-  if (frame_diag::iter_count >= frame_diag::kPeriodFrames) {
+  if (now - frame_diag::last_summary_at_ms >= frame_diag::kProfilePeriodMs) {
     const double window_ms = now - frame_diag::last_summary_at_ms;
     const double avg_ms = frame_diag::iter_sum_ms / frame_diag::iter_count;
     // FPS over the wall-clock window (uses real elapsed time, not just
@@ -119,6 +132,12 @@ extern "C" void aurora_frame_diag_iter_tick() noexcept {
     const double fps = (window_ms > 0.0)
         ? (1000.0 * static_cast<double>(frame_diag::iter_count) / window_ms)
         : 0.0;
+    auto sorted = frame_diag::iter_samples;
+    const size_t sample_count = std::min<size_t>(frame_diag::iter_count, sorted.size());
+    std::sort(sorted.begin(), sorted.begin() + sample_count);
+    const double p95_ms = sorted[(sample_count - 1) * 95 / 100];
+    const double render_fps = 1000.0 * frame_diag::render_count / window_ms;
+    const double sim_hz = 1000.0 * frame_diag::sim_tick_count / window_ms;
 
     const uint64_t heap_now = frame_diag::heap_size_bytes();
     if (frame_diag::initial_heap_size == 0) {
@@ -130,11 +149,12 @@ extern "C" void aurora_frame_diag_iter_tick() noexcept {
         static_cast<int64_t>(heap_now) - static_cast<int64_t>(frame_diag::initial_heap_size);
 
     frame_diag::Log.info(
-        "[FrameProfile] iter#{} fps={:.1f} ms(min/avg/max)={:.1f}/{:.1f}/{:.1f}"
+        "[FrameProfile] iter#{} loop_hz={:.1f} render_fps={:.1f} sim_hz={:.1f} interp_frames={}/{}"
+        " ms(min/avg/p95/max)={:.1f}/{:.1f}/{:.1f}/{:.1f}"
         " acq->submit_last={:.2f}ms warns={} heap={}MB (Δ{:+d}MB/period, Δ{:+d}MB total)",
         static_cast<unsigned long long>(frame_diag::total_iter_count),
-        fps,
-        frame_diag::iter_min_ms, avg_ms, frame_diag::iter_max_ms,
+        fps, render_fps, sim_hz, frame_diag::interpolated_render_count, frame_diag::render_count,
+        frame_diag::iter_min_ms, avg_ms, p95_ms, frame_diag::iter_max_ms,
         frame_diag::last_submit_elapsed_ms,
         frame_diag::total_warnings_logged,
         heap_now / (1024 * 1024),
@@ -145,6 +165,9 @@ extern "C" void aurora_frame_diag_iter_tick() noexcept {
     frame_diag::iter_min_ms = 1e9;
     frame_diag::iter_max_ms = 0.0;
     frame_diag::iter_count = 0;
+    frame_diag::render_count = 0;
+    frame_diag::sim_tick_count = 0;
+    frame_diag::interpolated_render_count = 0;
     frame_diag::last_summary_at_ms = now;
     frame_diag::last_heap_size = heap_now;
   }

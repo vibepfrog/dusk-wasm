@@ -23,6 +23,7 @@ public:
     void UpdateSettings();
     void PreDraw();
     void PostDraw();
+    bool IsMenuVisible() const { return !m_isHidden; }
 
     static bool CheckMenuViewToggle(ImGuiKey key, bool& active);
     void AddToast(std::string_view message, float duration = 3.f);

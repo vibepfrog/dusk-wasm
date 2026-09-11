@@ -30,6 +30,7 @@
 
 #if TARGET_PC
 #include "dusk/frame_interpolation.h"
+#include "dusk/mouse.h"
 #include "dusk/logging.h"
 #include "imgui.h"
 #endif
@@ -7630,11 +7631,13 @@ void dCamera_c::deactivateDebugFlyCam() {
 }
 
 bool dCamera_c::freeCamera() {
-    if (dusk::getSettings().game.freeCamera && mGear == 1) {
+    const bool useFreeCamera = dusk::getSettings().game.freeCamera ||
+                               dusk::getSettings().game.enableMouseCamera;
+    if (useFreeCamera && mGear == 1) {
         mGear = 0;
     }
 
-    if (!dusk::getSettings().game.freeCamera || mCamStyle == 70)
+    if (!useFreeCamera || mCamStyle == 70)
     {
         mCamParam.mManualMode = 0;
         return false;
@@ -7654,6 +7657,15 @@ bool dCamera_c::freeCamera() {
         camMovement.y *= dusk::getSettings().game.invertCameraYAxis ? 1.0f : -1.0f;
         mCamParam.freeXAngle += camMovement.x * magnitude * dusk::getSettings().game.freeCameraSensitivity * 5.0f;
         mCamParam.freeYAngle += camMovement.y * magnitude * dusk::getSettings().game.freeCameraSensitivity * 5.0f;
+    }
+
+    float mouse_yaw = 0.0f, mouse_pitch = 0.0f;
+    dusk::mouse::get_camera_deltas(mouse_yaw, mouse_pitch);
+    if ((mouse_yaw != 0.0f || mouse_pitch != 0.0f) &&
+        !dComIfGp_checkCameraAttentionStatus(dComIfGp_getPlayerCameraID(0), 0x8)) {
+        mCamParam.mManualMode = 1;
+        mCamParam.freeXAngle += MTXRadToDeg(mouse_yaw);
+        mCamParam.freeYAngle += -MTXRadToDeg(mouse_pitch);
     }
 
     fopAc_ac_c* player = dComIfGp_getPlayer(0);

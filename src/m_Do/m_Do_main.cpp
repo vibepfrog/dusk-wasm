@@ -14,6 +14,10 @@
 // frame_diag can measure iter-to-iter wall time and dump a periodic
 // FPS / heap summary. extern "C" must live at namespace scope.
 extern "C" void aurora_frame_diag_iter_tick() noexcept;
+extern "C" void aurora_frame_diag_render_tick(int sim_ticks, bool interpolating) noexcept;
+EM_ASYNC_JS(void, dusk_wait_for_browser_frame, (int synchronize), {
+    await globalThis.DuskFramePacing.wait(!!synchronize);
+});
 #endif
 #include "DynamicLink.h"
 #include "JSystem/JAudio2/JASAudioThread.h"
@@ -60,6 +64,7 @@ extern "C" void aurora_frame_diag_iter_tick() noexcept;
 #include "dusk/frame_interpolation.h"
 #include "dusk/game_clock.h"
 #include "dusk/gyro.h"
+#include "dusk/mouse.h"
 #include "dusk/imgui/ImGuiConsole.hpp"
 #include "dusk/imgui/ImGuiEngine.hpp"
 #include "dusk/iso_validate.hpp"
@@ -277,14 +282,13 @@ void main01(void) {
         em_loop_iter++;
 #endif
 #ifdef __EMSCRIPTEN__
-        // Without an explicit yield, the wasm main loop monopolizes the JS event
-        // loop and the browser never gets a chance to flush rendering, dispatch
-        // input, or pump async I/O. JSPI lets emscripten_sleep suspend Wasm
-        // and resume after a JS event-loop turn; a 0 ms sleep is a simple "hand
-        // control back to the browser for one tick" primitive available without
-        // restructuring this loop into emscripten_set_main_loop. Placed at the
-        // top so the `continue` after a failed aurora_begin_frame still yields.
-        emscripten_sleep(0);
+        // With interpolation + VSync, submit at the browser display cadence,
+        // rather than spending CPU/GPU time on frames it cannot display. Keep
+        // the timer yield for original-speed mode and Turbo; their existing
+        // limiter controls timing. This occurs before acquiring GPU resources.
+        dusk_wait_for_browser_frame(dusk::getSettings().game.enableFrameInterpolation &&
+                                    dusk::getSettings().video.enableVsync &&
+                                    !dusk::getTransientSettings().skipFrameRateLimit);
 #endif
 #if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         if (em_loop_iter < 5) OSReport(">>> main01 loop iter=%d after sleep\n", em_loop_iter - 1);
@@ -320,6 +324,7 @@ void main01(void) {
         }
 
         eventsDone:;
+        dusk::mouse::update_capture();
 
 #if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
         if (em_loop_iter < 5) OSReport(">>> main01 iter=%d events processed, calling aurora_begin_frame\n", em_loop_iter - 1);
@@ -354,6 +359,7 @@ void main01(void) {
                 for (int sim_tick = 0; sim_tick < pacing.sim_ticks_to_run; ++sim_tick) {
                     dusk::frame_interp::begin_sim_tick();
                     mDoCPd_c::read();
+                    dusk::mouse::read();
                     dusk::gyro::read(pacing.sim_pace);
                     fapGm_Execute();
                     mDoAud_Execute();
@@ -376,6 +382,7 @@ void main01(void) {
 
             // Game Inputs
             mDoCPd_c::read();
+            dusk::mouse::read();
             dusk::gyro::read(pacing.presentation_dt_seconds);
 
             // EXECUTE GAME LOGIC & RENDER
@@ -386,6 +393,9 @@ void main01(void) {
         }
 
         aurora_end_frame();
+#ifdef __EMSCRIPTEN__
+        aurora_frame_diag_render_tick(pacing.sim_ticks_to_run, pacing.is_interpolating);
+#endif
 
         FrameMark;
 

@@ -619,6 +619,8 @@ if (EMSCRIPTEN)
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/save_store.js"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/texture_pack.js"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/pipeline_store.js"
+        "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/mouse_input.js"
+        "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/frame_pacing.js"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/pre.js"
         # Provide JS shims for Rust panic_unwind imports (nod's transitive deps
         # may use panic=unwind even with our workspace panic=abort env). Without
@@ -634,6 +636,8 @@ if (EMSCRIPTEN)
         "${CMAKE_SOURCE_DIR}/web/save_ui.js"
         "${CMAKE_SOURCE_DIR}/web/texture_pack.js"
         "${CMAKE_SOURCE_DIR}/web/pipeline_store.js"
+        "${CMAKE_SOURCE_DIR}/web/mouse_input.js"
+        "${CMAKE_SOURCE_DIR}/web/frame_pacing.js"
         "${CMAKE_SOURCE_DIR}/web/enhancements_ui.js"
         "${CMAKE_SOURCE_DIR}/web/pre.js"
         "${CMAKE_SOURCE_DIR}/web/unwind_shim.js"
