@@ -10,6 +10,8 @@
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
+#include <fstream>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -58,13 +60,9 @@ constexpr size_t BuildPipelinesPerFrame = 1;
 #endif
 
 #ifdef __EMSCRIPTEN__
-// Pipeline-cache diagnostic counters. The web build has no worker thread
-// (Skipping pipeline cache writer thread (emscripten, no -pthread)),
-// so pipelines queued past the per-frame budget would never get built
-// without the end-of-frame drain below. These counters let us correlate
-// bind_pipeline failures (silent draw skips → garbled menu text) with
-// pending-pipeline count, so we know whether the fix is actually
-// emptying the queue.
+// Rendering stays on its owning pthread; needed pipelines must be ready
+// before draw replay. Startup warmup runs before any frame is active.
+static bool g_webPrewarming = false;
 namespace diag {
 uint64_t total_bind_failures = 0;
 uint64_t total_pipelines_created = 0;
@@ -141,6 +139,16 @@ static PipelineCacheWrite make_pipeline_cache_write(ShaderType type, PipelineRef
 }
 
 static void enqueue_pipeline_cache_write(PipelineCacheWrite write) {
+#ifdef __EMSCRIPTEN__
+  // Copy before returning: the temporary C++ buffer cannot outlive this call.
+  // IndexedDB commits are asynchronous and batched on the browser main thread.
+  MAIN_THREAD_EM_ASM({
+    if (Module['duskPipelines']) Module['duskPipelines'].record(
+      $0, $1 >>> 0, $2 >>> 0, $3 >>> 0, $4 >>> 0, HEAPU8.subarray($5, $5 + $6));
+  }, underlying(write.type), uint32_t(write.hash), uint32_t(uint64_t(write.hash) >> 32),
+     write.configVersion, write.firstFrameUsed, write.config.data(), write.config.size());
+  return;
+#endif
   if (g_pipelineCacheBroken || g_pipelineCacheDb == nullptr) {
     return;
   }
@@ -535,6 +543,28 @@ static void pipeline_worker() {
 
 template <typename PipelineConfig, typename CreateFn>
 static void load_pipeline_cache_entries(ShaderType type, uint32_t configVersion, CreateFn&& create) {
+#ifdef __EMSCRIPTEN__
+  std::ifstream input("/dusk/pipeline-recipes.bin", std::ios::binary | std::ios::ate);
+  if (!input || input.tellg() < 8 || input.tellg() > 16 * 1024 * 1024) return;
+  input.seekg(0);
+  char magic[8];
+  if (!input.read(magic, 8) || std::memcmp(magic, "DUSKPC01", 8) != 0) return;
+  uint32_t row[6];
+  size_t count = 0;
+  while (count++ < 10000 && input.read(reinterpret_cast<char*>(row), sizeof(row))) {
+    if (row[2] > 8192) break;
+    if (row[0] != underlying(type) || row[1] != configVersion || row[2] != sizeof(PipelineConfig)) {
+      input.seekg(row[2], std::ios::cur);
+      continue;
+    }
+    PipelineConfig config;
+    if (!input.read(reinterpret_cast<char*>(&config), sizeof(config))) break;
+    const uint64_t hash = uint64_t(row[4]) | uint64_t(row[5]) << 32;
+    if (config.version != configVersion || xxh3_hash(config, static_cast<HashType>(type)) != hash) continue;
+    find_pipeline_impl(type, config, [=] { return create(config); }, false, row[3]);
+  }
+  return;
+#endif
   if (!prepare_pipeline_cache_db()) {
     return;
   }
@@ -579,6 +609,7 @@ static void load_pipeline_cache_entries(ShaderType type, uint32_t configVersion,
 }
 
 static void load_pipeline_cache() {
+#ifndef __EMSCRIPTEN__
   if (!prepare_pipeline_cache_db()) {
     return;
   }
@@ -586,6 +617,7 @@ static void load_pipeline_cache() {
   if (g_pipelineCacheBroken) {
     return;
   }
+#endif
 
   load_pipeline_cache_entries<clear::PipelineConfig>(ShaderType::Clear, clear::ClearPipelineConfigVersion,
                                                      clear::create_pipeline);
@@ -596,20 +628,13 @@ static void load_pipeline_cache() {
 }
 
 static void start_pipeline_cache_writer() {
+#ifdef __EMSCRIPTEN__
+  return; // Browser recipes use IndexedDB; never enqueue unused SQLite writes.
+#else
   if (!prepare_pipeline_cache_db()) {
     return;
   }
 
-#ifdef __EMSCRIPTEN__
-  // The writer is a background std::thread that drains queued pipeline cache
-  // entries to sqlite. Under emscripten without -pthread, std::thread aborts.
-  // We deliberately don't enable -pthread (would require COOP/COEP headers and
-  // breaks single-file Pages hosting), and pipeline cache persistence is
-  // already broken anyway (the cache db lives in MEMFS, not IDBFS, so it
-  // doesn't survive a reload). Skip the writer entirely.
-  Log.info("Skipping pipeline cache writer thread (emscripten, no -pthread)");
-  return;
-#else
   g_pipelineCacheWriterStop = false;
   g_pipelineCacheWriterThread = std::thread(pipeline_cache_writer);
 #endif
@@ -654,10 +679,54 @@ void initialize_pipeline_cache() {
     g_pipelineThread = std::thread(pipeline_worker);
   }
 
+#ifdef __EMSCRIPTEN__
+  g_webPrewarming = true;
+#endif
   load_pipeline_cache();
+#ifdef __EMSCRIPTEN__
+  const size_t total = g_pipelines.size() + g_pendingPipelines.size();
+  if (total) Log.info("Preparing {} saved shader pipelines before play", total);
+  while (!g_pendingPipelines.empty()) {
+    MAIN_THREAD_EM_ASM({
+      if (Module['duskPipelines']) Module['duskPipelines'].status('Preparing shaders: ' + $0 + ' / ' + $1);
+      if (Module.setStatus) Module.setStatus('Preparing shaders: ' + $0 + ' / ' + $1);
+    }, g_pipelines.size(), total);
+    g_pipelinesPerFrame = 0;
+    pipeline_worker();
+    emscripten_sleep(0);
+  }
+  g_webPrewarming = false;
+  g_pipelinesPerFrame = 0;
+  diag::compile_ms = diag::longest_compile_ms = 0;
+  MAIN_THREAD_EM_ASM({
+    if (Module['duskPipelines']) Module['duskPipelines'].status($0
+      ? $0 + ' shaders prepared. New shaders will be remembered as you play.'
+      : 'Shaders will be remembered as you play.');
+    if (Module.setStatus) Module.setStatus('');
+  }, total);
+#endif
   if (!g_pipelineCacheBroken) {
     start_pipeline_cache_writer();
   }
+}
+
+wgpu::RenderPipeline create_render_pipeline(const wgpu::RenderPipelineDescriptor* descriptor) {
+#ifdef __EMSCRIPTEN__
+  if (g_webPrewarming) {
+    // Resolve GPU compilation during warmup, not at the first draw. JSPI
+    // suspends only the render pthread; the page stays responsive.
+    auto result = std::make_shared<wgpu::RenderPipeline>();
+    const auto future = webgpu::g_device.CreateRenderPipelineAsync(
+        descriptor, wgpu::CallbackMode::WaitAnyOnly,
+        [result](wgpu::CreatePipelineAsyncStatus status, wgpu::RenderPipeline pipeline, wgpu::StringView) {
+          if (status == wgpu::CreatePipelineAsyncStatus::Success) *result = std::move(pipeline);
+        });
+    const auto status = webgpu::g_instance.WaitAny(future, UINT64_MAX);
+    if (status == wgpu::WaitStatus::Success && *result) return std::move(*result);
+    Log.warn("Saved shader warmup failed; using normal pipeline creation");
+  }
+#endif
+  return webgpu::g_device.CreateRenderPipeline(descriptor);
 }
 
 void shutdown_pipeline_cache() {

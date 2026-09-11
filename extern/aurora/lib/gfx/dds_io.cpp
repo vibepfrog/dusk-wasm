@@ -3,6 +3,28 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
+#include <bit>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+EM_ASYNC_JS(uint8_t*, dusk_read_pack_texture, (const char* path, uint32_t* length), {
+  try {
+    var pack = globalThis.__duskTexturePack;
+    var entry = pack && pack.entries.get(UTF8ToString(path).slice('/dusk/texture-pack/'.length));
+    if (!entry) return 0;
+    var bytes = await globalThis.DuskTexturePack.read(pack.file, entry);
+    var ptr = _malloc(bytes.length);
+    if (!ptr) return 0;
+    HEAPU8.set(bytes, ptr);
+    HEAPU32[length >>> 2] = bytes.length;
+    return ptr;
+  } catch (error) {
+    console.warn('[dusk] Texture skipped:', String(error));
+    return 0;
+  }
+});
+#endif
 
 #include "texture.hpp"
 
@@ -197,13 +219,18 @@ std::optional<ConvertedTexture> parse_dds_bytes(ArrayRef<uint8_t> bytes) noexcep
     return std::nullopt;
   }
 
-  const uint32_t mipCount = 1u;
+  const uint32_t mipCount = std::max(header->mipMapCount, 1u);
+  if (mipCount > std::bit_width(std::max(header->width, header->height))) return std::nullopt;
+#ifdef __EMSCRIPTEN__
+  if (header->width > 8192 || header->height > 8192) return std::nullopt;
+#endif
   const auto expectedSize = calc_texture_size(parsedLayout->format, header->width, header->height, mipCount);
   if (expectedSize == 0 || parsedLayout->dataOffset + expectedSize > bytes.size()) {
     return std::nullopt;
   }
 
   ByteBuffer data{static_cast<size_t>(expectedSize)};
+  if (!data.data()) return std::nullopt;
   std::memcpy(data.data(), bytes.data() + parsedLayout->dataOffset, expectedSize);
   return ConvertedTexture{
       .format = parsedLayout->format,
@@ -215,6 +242,17 @@ std::optional<ConvertedTexture> parse_dds_bytes(ArrayRef<uint8_t> bytes) noexcep
 }
 
 std::optional<ConvertedTexture> load_dds_file(const std::filesystem::path& path) noexcept {
+#ifdef __EMSCRIPTEN__
+  const auto name = path.string();
+  if (name.starts_with("/dusk/texture-pack/")) {
+    uint32_t length = 0;
+    auto* bytes = dusk_read_pack_texture(name.c_str(), &length);
+    if (!bytes) return std::nullopt;
+    auto result = parse_dds_bytes({bytes, length});
+    std::free(bytes);
+    return result;
+  }
+#endif
   const auto bytes = read_binary_file(path);
   if (!bytes.has_value()) {
     return std::nullopt;

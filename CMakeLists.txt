@@ -579,8 +579,7 @@ if (EMSCRIPTEN)
         # 256 MB initial — TP carries more model/audio/movie data than slider's AC,
         # so we start above slider's 128 MB to avoid an early grow stutter.
         -sINITIAL_MEMORY=268435456
-        # 2 GB ceiling: hard wasm32 limit is 4 GB but most browsers cap user wasm
-        # heaps lower; 2 GB is safe across Chrome/Edge/Safari/Firefox.
+        # 2 GiB project ceiling, not a guarantee of available browser/device RAM.
         -sMAXIMUM_MEMORY=2147483648
         -sSTACK_SIZE=5242880
         # Aurora creates the WebGPU adapter and device through synchronous
@@ -618,6 +617,8 @@ if (EMSCRIPTEN)
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/res@/res"
         "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/save_store.js"
+        "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/texture_pack.js"
+        "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/pipeline_store.js"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/pre.js"
         # Provide JS shims for Rust panic_unwind imports (nod's transitive deps
         # may use panic=unwind even with our workspace panic=abort env). Without
@@ -631,12 +632,18 @@ if (EMSCRIPTEN)
         "${CMAKE_SOURCE_DIR}/web/shell.html"
         "${CMAKE_SOURCE_DIR}/web/save_store.js"
         "${CMAKE_SOURCE_DIR}/web/save_ui.js"
+        "${CMAKE_SOURCE_DIR}/web/texture_pack.js"
+        "${CMAKE_SOURCE_DIR}/web/pipeline_store.js"
+        "${CMAKE_SOURCE_DIR}/web/enhancements_ui.js"
         "${CMAKE_SOURCE_DIR}/web/pre.js"
         "${CMAKE_SOURCE_DIR}/web/unwind_shim.js"
     )
     # iso_bridge.js is loaded by the HTML shell at runtime (file picker → worker handoff),
     # not linked into the wasm — copy it next to index.html so the <script> tag resolves.
     add_custom_command(TARGET dusk POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/web/enhancements_ui.js"
+            "${CMAKE_BINARY_DIR}/web/enhancements_ui.js"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/web/save_ui.js"
             "${CMAKE_BINARY_DIR}/web/save_ui.js"

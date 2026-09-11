@@ -20,6 +20,7 @@ void initialize_pipeline_cache();
 void shutdown_pipeline_cache();
 void begin_pipeline_frame();
 void end_pipeline_frame();
+wgpu::RenderPipeline create_render_pipeline(const wgpu::RenderPipelineDescriptor* descriptor);
 
 template <typename Config>
 PipelineRef find_pipeline(ShaderType type, const Config& config, NewPipelineCallback&& cb);

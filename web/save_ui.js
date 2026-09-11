@@ -11,18 +11,21 @@
             var retry = document.getElementById('save-retry');
             var message = document.getElementById('save-message');
             var importBusy = false;
+            var downloadUrls = [];
 
             function showError(err) { message.textContent = String(err.message || err); }
-            function download(game, backup) {
-                try {
-                    var file = store.download(game, backup);
-                    var url = URL.createObjectURL(new Blob([file.bytes], { type: 'application/octet-stream' }));
-                    var link = document.createElement('a');
-                    link.href = url;
+            function downloadLink(entry, backup, disabled) {
+                var link = document.createElement('a');
+                link.className = 'save-download';
+                link.textContent = 'Download ' + (backup ? 'previous ' : '') + entry.region + ' save';
+                link.setAttribute('aria-disabled', String(disabled));
+                if (!disabled) {
+                    var file = store.download(entry.game, backup);
+                    link.href = URL.createObjectURL(new Blob([file.bytes], { type: 'application/octet-stream' }));
                     link.download = file.name;
-                    link.click();
-                    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-                } catch (err) { showError(err); }
+                    downloadUrls.push(link.href);
+                }
+                return link;
             }
             function render(state) {
                 var unavailable = state.phase !== 'ready';
@@ -38,20 +41,18 @@
                 document.getElementById('save-import-hint').textContent = state.gameStarted
                     ? 'To import another save, finish saving and reload before choosing your disc.'
                     : 'Import a Windows campaign save before choosing your disc. Match the save and disc region.';
+                // Use real download links in the DOM, with a retained snapshot
+                // behind each URL. Retire replaced URLs after the browser has
+                // had time to begin any download already clicked by the user.
+                var retiredUrls = downloadUrls;
+                downloadUrls = [];
+                setTimeout(function () { retiredUrls.forEach(function (url) { URL.revokeObjectURL(url); }); }, 60000);
                 list.replaceChildren();
                 state.entries.forEach(function (entry) {
                     var row = document.createElement('div');
-                    var button = document.createElement('button');
-                    button.textContent = 'Download ' + entry.region + ' save';
-                    button.disabled = state.writing;
-                    button.addEventListener('click', function () { download(entry.game, false); });
-                    row.append(button);
+                    row.append(downloadLink(entry, false, state.writing));
                     if (entry.backup) {
-                        var previous = document.createElement('button');
-                        previous.textContent = 'Download previous ' + entry.region + ' save';
-                        previous.disabled = state.writing;
-                        previous.addEventListener('click', function () { download(entry.game, true); });
-                        row.append(previous);
+                        row.append(downloadLink(entry, true, state.writing));
                     }
                     list.append(row);
                 });

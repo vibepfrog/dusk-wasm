@@ -13,13 +13,23 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <charconv>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <list>
 #include <memory>
 #include <optional>
 #include <string_view>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+EM_JS(bool, dusk_pack_texture_exists, (const char* path), {
+  var pack = globalThis.__duskTexturePack;
+  return !!(pack && pack.entries.has(UTF8ToString(path).slice('/dusk/texture-pack/'.length)));
+});
+#endif
 
 using namespace aurora::gx;
 using aurora::webgpu::g_device;
@@ -69,7 +79,11 @@ std::list<RuntimeTextureKey> s_replacementLru;
 std::filesystem::path s_replacementRoot;
 std::filesystem::path s_dumpRoot;
 uint64_t s_replacementCacheBytes = 0;
-constexpr uint64_t kReplacementCacheBudgetBytes = 4294967296; // 4GB, reasonable for modern hardware?
+#ifdef __EMSCRIPTEN__
+constexpr uint64_t kReplacementCacheBudgetBytes = 256 * 1024 * 1024;
+#else
+constexpr uint64_t kReplacementCacheBudgetBytes = 4294967296;
+#endif
 constexpr uint64_t kReplacementWildcardTextureHash = 0xFFFFFFFFFFFFFFFFull;
 constexpr uint64_t kReplacementWildcardTlutHash = 0xFFFFFFFFFFFFFFFEull;
 
@@ -374,22 +388,28 @@ std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& pa
     Log.warn("texture_replacement: failed to load texture {}", path.string());
     return std::nullopt;
   }
-  if (!hasMips) {
+  if (!hasMips || base->mips > 1) {
     return base;
   }
 
   std::vector<ConvertedTexture> more;
   std::error_code ec;
-  for (uint32_t mipLevel = 1;; ++mipLevel) {
+  for (uint32_t mipLevel = 1; mipLevel < std::bit_width(std::max(base->width, base->height)); ++mipLevel) {
     const auto mipPath = path.parent_path() / fmt::format("{}_mip{}{}", path.stem().string(), mipLevel, path.extension().string());
-    if (!std::filesystem::is_regular_file(mipPath, ec)) {
+    bool exists;
+#ifdef __EMSCRIPTEN__
+    exists = dusk_pack_texture_exists(mipPath.string().c_str());
+#else
+    exists = std::filesystem::is_regular_file(mipPath, ec);
+#endif
+    if (!exists) {
       break;
     }
 
     auto lvl = dds::load_dds_file(mipPath);
     const uint32_t ew = std::max(base->width >> mipLevel, 1u);
     const uint32_t eh = std::max(base->height >> mipLevel, 1u);
-    const bool ok = lvl.has_value() && lvl->format == base->format && lvl->width == ew && lvl->height == eh;
+    const bool ok = lvl.has_value() && lvl->mips == 1 && lvl->format == base->format && lvl->width == ew && lvl->height == eh;
     if (!ok) {
       if (more.empty()) {
         if (!lvl.has_value()) {
@@ -404,12 +424,13 @@ std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& pa
     more.push_back(std::move(*lvl));
   }
 
-  if (more.empty()) {
-    return std::nullopt;
-  }
+  if (more.empty()) return base;
 
   const uint32_t mips = 1u + static_cast<uint32_t>(more.size());
   const uint64_t n = calc_texture_size(base->format, base->width, base->height, mips);
+#ifdef __EMSCRIPTEN__
+  if (n > 64 * 1024 * 1024) return std::nullopt;
+#endif
   if (n == 0) {
     return std::nullopt;
   }
@@ -476,6 +497,22 @@ void build_index() noexcept {
 
   s_replacementRoot = std::filesystem::path{g_config.configPath} / "texture_replacements";
   s_dumpRoot = std::filesystem::path{g_config.configPath} / "texture_dumps";
+
+#ifdef __EMSCRIPTEN__
+  // Metadata only. Payloads stay in the browser File and are read/decompressed
+  // on demand on this render pthread through JSPI.
+  std::ifstream manifest("/dusk/texture-pack-index.txt");
+  std::string name;
+  while (std::getline(manifest, name)) {
+    const auto path = std::filesystem::path("/dusk/texture-pack") / name;
+    if (is_sidecar_mip(path.stem().string())) continue;
+    if (const auto parsed = parse_replacement_filename(path.filename().string())) {
+      s_replacementIndex.try_emplace(*parsed, path);
+    }
+  }
+  Log.info("Indexed {} browser texture replacements (256 MiB cache)", s_replacementIndex.size());
+  return;
+#endif
 
   if (!ensure_directory(s_replacementRoot)) {
     return;
@@ -557,6 +594,22 @@ gfx::TextureHandle load_replacement_texture(const RuntimeTextureKey& key, const 
     s_failedKeys.insert(key);
     return {};
   }
+
+#ifdef __EMSCRIPTEN__
+  const bool compressed = replacement->format == wgpu::TextureFormat::BC1RGBAUnorm ||
+      replacement->format == wgpu::TextureFormat::BC3RGBAUnorm ||
+      replacement->format == wgpu::TextureFormat::BC5RGUnorm ||
+      replacement->format == wgpu::TextureFormat::BC7RGBAUnorm;
+  wgpu::Limits limits{};
+  g_device.GetLimits(&limits);
+  if ((compressed && !g_device.HasFeature(wgpu::FeatureName::TextureCompressionBC)) ||
+      replacement->width > limits.maxTextureDimension2D || replacement->height > limits.maxTextureDimension2D ||
+      (compressed && ((replacement->width % 4) || (replacement->height % 4)))) {
+    Log.warn("Skipping unsupported HD texture {}", path.string());
+    s_failedKeys.insert(key);
+    return {};
+  }
+#endif
 
   const auto label = fmt::format("TextureReplacement {}", format_replacement_filename(key));
   const wgpu::Extent3D size{

@@ -34,6 +34,10 @@
             if (message.type !== 'disc-file' || !message.file) return;
             globalThis.__duskDiscFile = message.file;
             globalThis.__duskDiscReader = null;
+            globalThis.__duskTexturePack = message.pack ? {
+                file: message.pack.file,
+                entries: new Map(message.pack.entries.map(function (entry) { return [entry.name, entry]; })),
+            } : null;
             channel.postMessage({
                 type: 'disc-ready',
                 token: message.token,
@@ -46,6 +50,7 @@
 
     var currentFile = null;
     var currentToken = null;
+    var currentPack = null;
     var pending = null;
 
     function collectionSize(collection) {
@@ -62,7 +67,7 @@
 
     function broadcastCurrentFile() {
         if (currentFile && currentToken) {
-            channel.postMessage({ type: 'disc-file', token: currentToken, file: currentFile });
+            channel.postMessage({ type: 'disc-file', token: currentToken, file: currentFile, pack: currentPack });
         }
     }
 
@@ -85,6 +90,10 @@
 
     Module.duskSetDiscFile = function (file) {
         currentFile = file;
+        currentPack = Module.duskSelectedPack || null;
+        FS.mkdirTree('/dusk');
+        FS.writeFile('/dusk/texture-pack-index.txt', currentPack
+            ? currentPack.entries.map(function (entry) { return entry.name; }).join('\n') : '');
         currentToken = globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function'
             ? globalThis.crypto.randomUUID()
             : Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -127,6 +136,15 @@ Module.preRun.push(function () {
     // to write dawn_cache.db / pipeline_cache.db there. Pre-create defensively.
     FS.mkdirTree('/libsdl/TwilitRealm/Dusk');
 
+    Module['duskPipelines'] = globalThis.DuskPipelineStore.create({ FS: FS, indexedDB: indexedDB });
+    addRunDependency('shader-cache-rehydrate');
+    Module['duskPipelines'].initialize().finally(function () {
+        removeRunDependency('shader-cache-rehydrate');
+    });
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) Module['duskPipelines'].flush();
+    });
+
     Module['duskSaves'] = globalThis.DuskSaveStore.create({
         FS: FS, IDBFS: IDBFS,
         logError: function (err) { console.error('[dusk] save storage:', err); },
@@ -158,6 +176,7 @@ Module.preRun.push(function () {
     });
 
     window.addEventListener('beforeunload', function (event) {
+        Module['duskPipelines'].flush();
         var state = Module['duskSaves'].state();
         if (state.writing || state.pending || state.dirty) {
             event.preventDefault();

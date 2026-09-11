@@ -1,4 +1,5 @@
 #include "clear.hpp"
+#include "pipeline_cache.hpp"
 
 #include "../webgpu/gpu.hpp"
 #include "tracy/Tracy.hpp"
@@ -108,7 +109,7 @@ fn fs_main() -> @location(0) vec4<f32> {
           },
       .fragment = &fragmentState,
   };
-  return g_device.CreateRenderPipeline(&pipelineDescriptor);
+  return gfx::create_render_pipeline(&pipelineDescriptor);
 }
 
 void render(const DrawData& data, const wgpu::RenderPassEncoder& pass, const wgpu::Extent3D& targetSize) {
