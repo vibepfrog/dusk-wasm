@@ -31,6 +31,7 @@
         var error = '';
         var writeActive = false;
         var gameStarted = false;
+        var isolated = false;
         var importing = false;
         var pending = 0;
         var revision = 0;
@@ -42,7 +43,7 @@
         function state() {
             return {
                 phase: phase, error: error, writing: writeActive, importing: importing,
-                gameStarted: gameStarted, pending: pending,
+                gameStarted: gameStarted, isolated: isolated, pending: pending,
                 dirty: revision !== persistedRevision,
                 entries: Array.from(entries.values(), function (e) {
                     return { game: e.game, region: e.region, name: e.name, backup: backups.has(e.game) };
@@ -149,10 +150,12 @@
             if (phase !== 'ready') throw new Error(error || 'Saved games are still loading.');
         }
         function beginWrite() {
+            if (isolated) return;
             writeActive = true;
             notify();
         }
         function endWrite(success) {
+            if (isolated) return;
             writeActive = false;
             if (!success) {
                 error = 'The game could not complete its save. The previous completed save is retained.';
@@ -188,6 +191,20 @@
         return {
             initialize: initialize, state: state, beginWrite: beginWrite, endWrite: endWrite,
             importSave: importSave,
+            setIsolated: function (value) {
+                if (writeActive || pending) throw new Error('Wait for campaign storage before changing session mode.');
+                // The authoritative completed snapshots are kept unchanged.
+                // Restore working files as a second guard on returning to play.
+                if (isolated && !value) {
+                    Object.keys(regions).forEach(function (game) {
+                        var dir = folder(workingRoot, regions[game]);
+                        filesAt(dir).forEach(function (name) { FS.unlink(dir + '/' + name); });
+                    });
+                    writeCards(workingRoot, entries);
+                }
+                isolated = !!value;
+                notify();
+            },
             subscribe: function (listener) { listeners.push(listener); listener(state()); },
             startGame: function () {
                 requireReady();

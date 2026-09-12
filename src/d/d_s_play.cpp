@@ -6,6 +6,7 @@
 #include "d/dolzel.h" // IWYU pragma: keep
 
 #include "d/d_s_play.h"
+#include "dusk/showcase.h"
 #include "JSystem/JUtility/JUTConsole.h"
 #include "JSystem/JUtility/JUTGamePad.h"
 #include "SSystem/SComponent/c_counter.h"
@@ -1148,6 +1149,7 @@ static int phase_0(dScnPly_c* i_this) {
 }
 
 static int phase_1(dScnPly_c* i_this) {
+    dusk::showcase::prepare_scene();
     dStage_roomControl_c::setProcID(fopScnM_GetID(i_this));
 
     dComIfGp_setStartStage(dComIfGp_getNextStartStage());

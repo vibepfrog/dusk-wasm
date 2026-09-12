@@ -114,6 +114,7 @@
             }
         }
         return { initialize, record, flush, startGame, status,
+            snapshot() { return encode(records.values()); },
             subscribe(fn) { listeners.add(fn); fn(message); return () => listeners.delete(fn); } };
     }
     globalThis.DuskPipelineStore = { create, encode, valid, MAX_BYTES, MAX_RECORDS };

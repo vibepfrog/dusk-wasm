@@ -36,6 +36,7 @@
                 status.textContent = state.error || (state.writing || state.pending || state.importing
                     ? 'Saving… keep this tab open.'
                     : unavailable ? 'Opening saved games…'
+                    : state.isolated ? 'Showcase: campaign saves are protected. Saving is disabled in this mode.'
                     : state.entries.length ? 'Saved on this device.' : 'No campaign save yet. Save from the game menu.');
                 status.classList.toggle('error', !!state.error);
                 document.getElementById('save-import-hint').textContent = state.gameStarted

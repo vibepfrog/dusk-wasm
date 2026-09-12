@@ -12,6 +12,7 @@
 #include "JSystem/JKernel/JKRSolidHeap.h"
 #include "d/d_file_sel_info.h"
 #include "d/d_file_select.h"
+#include "dusk/showcase.h"
 #include "d/d_lib.h"
 #include "d/d_meter2_info.h"
 #include "d/d_msg_string.h"
@@ -257,6 +258,7 @@ void dFile_select_c::_create() {
     dComIfGs_init();
     dComIfGp_itemDataInit();
     dComIfGs_setNewFile(0);
+    dusk::showcase::campaign_ready();
 
     mHasDrawn = false;
 

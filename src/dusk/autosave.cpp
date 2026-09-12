@@ -1,4 +1,5 @@
 #include "dusk/autosave.h"
+#include "dusk/showcase.h"
 #include "dusk/ui/ui.hpp"
 #include "imgui/ImGuiConsole.hpp"
 
@@ -13,7 +14,10 @@ static AutoSaveFuncs AutoSaveFuncsProc[] = {
 
 void noAutoSave() {}
 
+void resetAutoSave() { mAutoSaveProc = 0; autoSaveWriteState = 0; }
+
 void triggerAutoSave() {
+    if (dusk::showcase::active()) return;
     if (dusk::getSettings().game.autoSave && mAutoSaveProc == 0 &&
         strcmp(dComIfGp_getStartStageName(), "F_SP102") != 0)
     {
