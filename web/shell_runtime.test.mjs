@@ -7,7 +7,7 @@ const shell = readFileSync(new URL('./shell.html', import.meta.url), 'utf8');
 
 test('launcher startup ordering, capability guards, and main error handling', async () => {
     const checks = await checkShellRuntime(shell);
-    assert.equal(checks.length, 6);
+    assert.equal(checks.length, 7);
 });
 
 test('checks tolerate compact JavaScript, renamed locals, and unquoted HTML attributes', async () => {
@@ -18,7 +18,7 @@ test('checks tolerate compact JavaScript, renamed locals, and unquoted HTML attr
         .replace(/\bruntimeReadyPromise\b/g, 'r')
         .replace(/\bresolveRuntimeReady\b/g, 'q')
         .replace(/id="iso-file"/g, 'id=iso-file');
-    assert.equal((await checkShellRuntime(compact)).length, 6);
+    assert.equal((await checkShellRuntime(compact)).length, 7);
 });
 
 test('checks reject a chooser enabled before runtime readiness', async () => {
@@ -34,4 +34,9 @@ test('checks reject removal of the independent runtime promise gate', async () =
 test('checks reject a callback that overrides a failed capability guard', async () => {
     await assert.rejects(checkShellRuntime(shell.replace('if (!capabilityError)', 'if (true)')),
         /callback must not bypass capability guard/);
+});
+
+test('checks reject dropping the showcase flag before native startup', async () => {
+    await assert.rejects(checkShellRuntime(shell.replace('.concat(launchArgs)', '')),
+        /showcase launch flag must reach native main/);
 });

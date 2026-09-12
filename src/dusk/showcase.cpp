@@ -31,8 +31,8 @@ struct Scene { const char* stage; const char* name; s8 room; s16 spawn; s8 layer
 // Existing stage entrances, also listed in map_loader_definitions.h. Each visit
 // starts a new temporary progression state; no campaign file is loaded or edited.
 constexpr Scene scenes[] = {
-    {"F_SP103", "Ordon Village", 0, 0, 0},
-    {"F_SP104", "Ordon Spring", 1, 0, 0},
+    {"F_SP103", "Ordon Village", 0, 0, 2},
+    {"F_SP104", "Ordon Spring", 1, 0, 2},
     {"F_SP127", "Fishing Pond", 0, 0, 0},
 };
 constexpr int sceneCount = sizeof(scenes) / sizeof(scenes[0]);

@@ -45,7 +45,7 @@ function element(attrs = {}) {
     };
 }
 
-function launch(html, unavailable) {
+function launch(html, unavailable, showcase = false) {
     const inputAttrs = findElement(html, 'input', a => a.id === 'iso-file');
     assert.ok(Object.hasOwn(inputAttrs, 'disabled'), 'chooser must be disabled in the initial HTML');
     const pick = element(findElement(html, 'label', a => a.for === 'iso-file'));
@@ -77,6 +77,10 @@ function launch(html, unavailable) {
         },
     };
     context.window = context;
+    if (showcase) context.duskShowcaseUI = {
+        attach() {},
+        prepare() { calls.push(['prepare-showcase']); return ['--showcase']; },
+    };
     const inline = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
         .filter(match => !Object.hasOwn(attributes(match[1]), 'src') && match[2].trim())
         .map(match => match[2]);
@@ -131,6 +135,18 @@ export async function checkShellRuntime(html) {
     await flushTasks();
     assert.equal(app.calls.length, 2, 'duplicate input must not launch the game twice');
     checks.push('runtime readiness and completed disc handoff launch main exactly once');
+
+    const demo = launch(html, undefined, true);
+    demo.ready();
+    demo.select();
+    await flushTasks();
+    assert.deepEqual(demo.calls.map(call => call[0]), ['prepare-showcase', 'import'],
+        'showcase preparation must precede disc handoff');
+    demo.finishImport();
+    await flushTasks();
+    assert.deepEqual(demo.calls[2], ['main', '/dusk/browser-disc', '--showcase'],
+        'showcase launch flag must reach native main');
+    checks.push('showcase preparation precedes handoff and its flag reaches native main');
 
     // Force an event past the disabled UI to test the promise gate separately.
     const forced = launch(html);
