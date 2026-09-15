@@ -9,6 +9,7 @@
     <script src="iso_bridge.js" defer></script>
     <script src="save_ui.js"></script>
     <script src="enhancements_ui.js"></script>
+    <script src="showcase_ui.js"></script>
     <style>
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
             background: #0b0b0d; color: #e6e6e6;
@@ -60,6 +61,35 @@
         #enhancements summary { cursor: pointer; }
         #enhancements input[type="file"] { max-width: 100%; margin-top: 10px; }
         #enhancements p { margin: 8px 0; }
+        .launch-option { display: block; margin: 18px 0 8px; padding: 12px;
+            border: 1px solid #44444e; border-radius: 6px; text-align: left; font-size: 14px; }
+        .launch-option small { display: block; margin: 6px 0 0 22px; color: #aaa; line-height: 1.5; }
+        #showcase-panel { position: fixed; top: 10px; left: 10px; z-index: 20;
+            width: min(410px, calc(100vw - 48px)); box-sizing: border-box;
+            padding: 12px 14px; border: 1px solid #44444e; border-radius: 8px;
+            background: #16161af5; font-size: 13px; line-height: 1.5; max-height: 88vh; overflow-y: auto; }
+        #showcase-panel[hidden] { display: none; }
+        #showcase-panel summary { cursor: pointer; font-weight: 600; }
+        #showcase-panel p { margin: 10px 0; }
+        #showcase-panel button, #showcase-panel select, #showcase-panel a {
+            display: inline-block; margin: 4px 4px 4px 0; padding: 6px 9px;
+            border: 1px solid #44444e; border-radius: 5px; font: inherit;
+            background: #2a2a32; color: #e6e6e6; }
+        #showcase-panel a { color: #8dcaff; }
+        #showcase-panel [hidden] { display: none; }
+        #showcase-panel button { cursor: pointer; }
+        #showcase-panel button:disabled, #showcase-panel select:disabled { opacity: .5; cursor: default; }
+        #showcase-panel progress { width: 100%; accent-color: #6cb6ff; }
+        #showcase-panel .quiet { color: #aaa; font-size: 12px; }
+        #showcase-results-wrap { overflow-x: auto; }
+        #showcase-panel table { width: 100%; border-collapse: collapse; font-size: 12px;
+            font-variant-numeric: tabular-nums; }
+        #showcase-panel th, #showcase-panel td { padding: 6px; text-align: right;
+            border-bottom: 1px solid #35353e; white-space: nowrap; }
+        #showcase-panel th:first-child, #showcase-panel td:first-child { text-align: left; }
+        @media (max-width: 600px) {
+            #showcase-panel { top: 60px; max-height: calc(100vh - 84px); }
+        }
         #mouse-status { position: fixed; bottom: 12px; left: 12px; z-index: 15;
             padding: 6px 10px; border-radius: 5px; background: #16161ae6;
             color: #d8d8df; font-size: 12px; pointer-events: none; }
@@ -76,6 +106,10 @@
             <div class="subtitle">A web port of The Legend of Zelda: Twilight Princess (GameCube)</div>
 
             <div class="prompt">Drop your Twilight Princess GameCube disc image here</div>
+            <label class="launch-option"><input type="checkbox" id="launch-showcase" disabled>
+                Quick showcase &amp; benchmark
+                <small>Skip the opening sequence. Explore three locations with a temporary character and prepare shaders as you play.</small>
+            </label>
             <label class="pick-btn" for="iso-file" aria-disabled="true">Choose file</label>
             <input id="iso-file" type="file" accept=".iso,.gcm,.ciso" disabled>
 
@@ -103,6 +137,40 @@
     <div id="boot-status"></div>
     <div id="mouse-status" role="status" hidden></div>
 
+    <details id="showcase-panel" hidden open>
+        <summary>Showcase &amp; benchmark</summary>
+        <p id="showcase-status" role="status">Preparing showcase…</p>
+        <label for="showcase-scene">Visit</label>
+        <select id="showcase-scene" disabled>
+            <option value="0">Ordon Village</option>
+            <option value="1">Ordon Spring</option>
+            <option value="2">Fishing Pond</option>
+        </select>
+        <p>Try movement, your sword, lantern and bow. <strong>Esc</strong> releases the mouse;
+            <strong>F1</strong> opens settings, including Mouse Camera.</p>
+        <button id="showcase-benchmark" type="button" disabled>Benchmark this location</button>
+        <button id="showcase-tour" type="button" disabled>Benchmark all three</button>
+        <button id="showcase-explore" type="button" disabled>Free explore</button>
+        <button id="showcase-campaign" type="button" disabled>Return to campaign</button>
+        <p class="quiet">Temporary character: saving is disabled here. Your existing campaign stays available in Saves.</p>
+        <progress id="showcase-progress" max="1" value="0" aria-label="Current benchmark pass" hidden></progress>
+        <p id="showcase-run-note" class="quiet">Each location runs a 20-second camera sweep twice.
+            The first pass can already benefit from saved shaders. Loading time is excluded from FPS.</p>
+        <div id="showcase-results-wrap" hidden>
+            <table>
+                <caption>Rendered performance by location and pass</caption>
+                <thead><tr><th>Location</th><th>Pass</th><th>FPS</th><th>1% low</th><th>Shader builds</th><th>&gt;50 ms</th></tr></thead>
+                <tbody id="showcase-results"></tbody>
+            </table>
+            <p class="quiet">Shader builds: entry + camera sweep. 1% low uses the slowest 1% of frame intervals.
+                Spikes can also come from texture loading or other work. This samples these locations, not the whole game.</p>
+        </div>
+        <a id="showcase-report" hidden>Download benchmark results</a>
+        <p id="showcase-cache" class="quiet"></p>
+        <button id="showcase-export" type="button">Prepare shader download</button>
+        <a id="showcase-recipes" hidden>Download shader recipes</a>
+    </details>
+
     <details id="saves-panel">
         <summary>Saves</summary>
         <p id="save-status" role="status">Opening saved games…</p>
@@ -128,6 +196,7 @@
         var bootStatusEl = document.getElementById('boot-status');
         var pickButton = dropZone.querySelector('.pick-btn');
         var importing = false;
+        var launchArgs = [];
         var capabilityError = '';
         var resolveRuntimeReady;
         var runtimeReadyPromise = new Promise(function (resolve) {
@@ -168,6 +237,7 @@
             // dependency. callMain() asserts if it is reached any earlier.
             runtimeReadyPromise.then(function () {
                 if (window.duskEnhancements) window.duskEnhancements.prepare();
+                if (window.duskShowcaseUI) launchArgs = window.duskShowcaseUI.prepare();
                 return window.duskIsoImport.importIso(file, {
                     onPhase: function (name) { setStatus(phaseLabel(name), false); },
                 });
@@ -187,7 +257,7 @@
 
                 try {
                     Module.duskSaves.startGame();
-                    var mainResult = Module.callMain([result.path]);
+                    var mainResult = Module.callMain([result.path].concat(launchArgs));
                     if (mainResult && typeof mainResult.then === 'function') {
                         mainResult.catch(handleMainFailure);
                     }
@@ -197,6 +267,7 @@
             }).catch(function (err) {
                 importing = false;
                 if (window.duskEnhancements) window.duskEnhancements.recover();
+                if (window.duskShowcaseUI) window.duskShowcaseUI.recover();
                 console.error('[dusk] disc import failed:', err);
                 setStatus(String(err && err.message ? err.message : err), true);
             });
@@ -263,6 +334,7 @@
                 resolveRuntimeReady();
                 window.duskSaveUI.attach(Module.duskSaves);
                 if (window.duskEnhancements) window.duskEnhancements.attach(Module);
+                if (window.duskShowcaseUI) window.duskShowcaseUI.attach(Module);
                 if (Module.duskSaveError) {
                     capabilityError = Module.duskSaveError;
                     setStatus(capabilityError, true);

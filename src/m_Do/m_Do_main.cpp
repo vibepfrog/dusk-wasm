@@ -65,6 +65,7 @@ EM_ASYNC_JS(void, dusk_wait_for_browser_frame, (int synchronize), {
 #include "dusk/game_clock.h"
 #include "dusk/gyro.h"
 #include "dusk/mouse.h"
+#include "dusk/showcase.h"
 #include "dusk/imgui/ImGuiConsole.hpp"
 #include "dusk/imgui/ImGuiEngine.hpp"
 #include "dusk/iso_validate.hpp"
@@ -303,6 +304,7 @@ void main01(void) {
             case AURORA_NONE:
                 goto eventsDone;
             case AURORA_PAUSED:
+                dusk::showcase::pause();
                 dusk::audio::SetPaused(true);
                 break;
             case AURORA_UNPAUSED:
@@ -324,6 +326,7 @@ void main01(void) {
         }
 
         eventsDone:;
+        dusk::showcase::update();
         dusk::mouse::update_capture();
 
 #if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE
@@ -394,6 +397,7 @@ void main01(void) {
 
         aurora_end_frame();
 #ifdef __EMSCRIPTEN__
+        dusk::showcase::rendered_frame();
         aurora_frame_diag_render_tick(pacing.sim_ticks_to_run, pacing.is_interpolating);
 #endif
 
@@ -729,6 +733,7 @@ int game_main(int argc, char* argv[]) {
             ("l,log-level", "Log level from " + std::to_string(AuroraLogLevel::LOG_DEBUG) + " to " + std::to_string(AuroraLogLevel::LOG_FATAL), cxxopts::value<uint8_t>()->default_value("0"))
             ("h,help", "Print usage")
             ("console", "Show the Windows console window for logs", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+            ("showcase", "Start the temporary browser showcase", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
             ("dvd", "Path to DVD image file", cxxopts::value<std::string>())
             ("backend", "Graphics API backend to use (auto, d3d12, metal, vulkan, null)", cxxopts::value<std::string>())
             ("cvar", "Override configuration variables without modifying config", cxxopts::value<std::vector<std::string>>());
@@ -756,6 +761,7 @@ int game_main(int argc, char* argv[]) {
 
     dusk::config::LoadFromUserPreferences();
     ApplyCVarOverrides(parsed_arg_options["cvar"]);
+    dusk::showcase::initialize(parsed_arg_options["showcase"].as<bool>());
     dusk::InitializeCrashReporting();
     EnsureInitialPipelineCache(dusk::ConfigPath);
     // TODO: How to handle this?
@@ -933,7 +939,7 @@ int game_main(int argc, char* argv[]) {
         dusk::IsGameLaunched = true;
     }
 
-    if (!dusk::getSettings().backend.wasPresetChosen) {
+    if (!dusk::getSettings().backend.wasPresetChosen && !dusk::showcase::active()) {
         dusk::ui::push_document(std::make_unique<dusk::ui::PresetWindow>());
     }
 

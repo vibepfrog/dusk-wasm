@@ -488,7 +488,7 @@ if (CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED OR CMAKE_LINK_GROUP_USING_RESCAN
     set(JSYSTEM_LINK_LIBRARIES "$<LINK_GROUP:RESCAN,${JSYSTEM_LIBRARIES}>")
 endif ()
 
-set(DUSK_FILES src/dusk/main.cpp ${GAME_BASE_FILES} ${GAME_DEBUG_FILES})
+set(DUSK_FILES src/dusk/main.cpp src/dusk/showcase.cpp ${GAME_BASE_FILES} ${GAME_DEBUG_FILES})
 if(ANDROID)
     add_library(dusk SHARED ${DUSK_FILES})
     set_target_properties(dusk PROPERTIES OUTPUT_NAME main)
@@ -639,6 +639,7 @@ if (EMSCRIPTEN)
         "${CMAKE_SOURCE_DIR}/web/mouse_input.js"
         "${CMAKE_SOURCE_DIR}/web/frame_pacing.js"
         "${CMAKE_SOURCE_DIR}/web/enhancements_ui.js"
+        "${CMAKE_SOURCE_DIR}/web/showcase_ui.js"
         "${CMAKE_SOURCE_DIR}/web/pre.js"
         "${CMAKE_SOURCE_DIR}/web/unwind_shim.js"
     )
@@ -648,6 +649,9 @@ if (EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/web/enhancements_ui.js"
             "${CMAKE_BINARY_DIR}/web/enhancements_ui.js"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/web/showcase_ui.js"
+            "${CMAKE_BINARY_DIR}/web/showcase_ui.js"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/web/save_ui.js"
             "${CMAKE_BINARY_DIR}/web/save_ui.js"

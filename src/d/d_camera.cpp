@@ -1,6 +1,7 @@
 #include "d/dolzel.h" // IWYU pragma: keep
 
 #include "d/d_camera.h"
+#include "dusk/showcase.h"
 #include "SSystem/SComponent/c_counter.h"
 #include "SSystem/SComponent/c_math.h"
 #include "d/actor/d_a_alink.h"
@@ -1042,6 +1043,11 @@ void dCamera_c::debugDrawInit() {
 bool dCamera_c::Run() {
 #if TARGET_PC
     ResetView();
+    if (dusk::showcase::camera(this)) {
+        mFrameCounter++;
+        mTicks++;
+        return true;
+    }
     if (executeDebugFlyCam()) {
         mFrameCounter++;
         mTicks++;

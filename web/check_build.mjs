@@ -27,7 +27,7 @@ if (!existsSync(buildDir)) {
 
 const expected = [
     'index.html', 'index.js', 'index.wasm', 'index.data',
-    'iso_bridge.js', 'save_ui.js', 'enhancements_ui.js', 'coi-serviceworker.js', '_headers',
+    'iso_bridge.js', 'save_ui.js', 'enhancements_ui.js', 'showcase_ui.js', 'coi-serviceworker.js', '_headers',
 ];
 const sizes = {};
 for (const name of expected) {

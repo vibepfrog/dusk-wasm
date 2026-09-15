@@ -8,6 +8,7 @@
 #include "d/dolzel.h" // IWYU pragma: keep
 
 #include "d/d_s_logo.h"
+#include "dusk/showcase.h"
 #include "JSystem/JKernel/JKRAram.h"
 #include "JSystem/JKernel/JKRExpHeap.h"
 #include "JSystem/JKernel/JKRMemArchive.h"
@@ -757,6 +758,7 @@ void dScnLogo_c::dvdWaitDraw() {
 
 void dScnLogo_c::nextSceneChange() {
     if (!mDoRst::isReset()) {
+        if (dusk::showcase::boot(this)) return;
         if (!isOpeningCut())
         {
             dComIfG_changeOpeningScene(this, fpcNm_OPENING_SCENE_e);

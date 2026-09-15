@@ -6,6 +6,8 @@ on:
     # port stabilises if we want to match slider's deploy-branch convention.
     branches: [wasm-port, web-release]
   workflow_dispatch:
+  pull_request:
+    branches: [wasm-port]
 
 permissions:
   contents: read
@@ -40,7 +42,7 @@ jobs:
           node-version: '24'
 
       - name: Test browser storage, texture packs and launcher
-        run: node --test web/save_store.test.mjs web/shell_runtime.test.mjs web/iso_bridge.test.mjs web/texture_pack.test.mjs web/pipeline_store.test.mjs web/mouse_input.test.mjs web/frame_pacing.test.mjs
+        run: node --test web/save_store.test.mjs web/shell_runtime.test.mjs web/iso_bridge.test.mjs web/texture_pack.test.mjs web/pipeline_store.test.mjs web/mouse_input.test.mjs web/frame_pacing.test.mjs web/showcase.test.mjs
 
       # ── Toolchain setup ────────────────────────────────────────────────
       - name: Setup pinned Rust nightly
@@ -233,6 +235,7 @@ jobs:
           path: build/web-emscripten-fast/web
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

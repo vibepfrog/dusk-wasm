@@ -9,6 +9,7 @@
 void noAutoSave();
 void triggerAutoSave();
 void updateAutoSave();
+void resetAutoSave();
 void enterAutoSave();
 void autoSaving();
 void waitingForWrite();

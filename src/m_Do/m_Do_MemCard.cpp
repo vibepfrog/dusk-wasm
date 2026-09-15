@@ -12,6 +12,7 @@
 #include "os_report.h"
 #include "dusk/os.h"
 #include "dusk/main.h"
+#include "dusk/showcase.h"
 #include "dusk/version.hpp"
 
 #ifdef __EMSCRIPTEN__
@@ -273,6 +274,14 @@ s32 mDoMemCd_Ctrl_c::LoadSync(void* i_buffer, u32 i_size, u32 i_position) {
 
 void mDoMemCd_Ctrl_c::save(void* i_buffer, u32 i_size, u32 i_position) {
     if (OSTryLockMutex(&mMutex)) {
+        if (dusk::showcase::active()) {
+            // Reject before copying temporary progress into the campaign I/O
+            // buffer or queueing work that could outlive the showcase.
+            mCardState = CARD_STATE_NO_CARD_e;
+            field_0x1fc8 = 1;
+            OSUnlockMutex(&mMutex);
+            return;
+        }
         memcpy(&mData[i_position], i_buffer, i_size);
         field_0x1fc8 = 0;
         mCardCommand = COMM_STORE_e;
@@ -283,6 +292,11 @@ void mDoMemCd_Ctrl_c::save(void* i_buffer, u32 i_size, u32 i_position) {
 
 #if !PLATFORM_SHIELD
 void mDoMemCd_Ctrl_c::store() {
+    if (dusk::showcase::active()) {
+        mCardState = CARD_STATE_NO_CARD_e;
+        field_0x1fc8 = 1;
+        return;
+    }
 #ifdef __EMSCRIPTEN__
     MAIN_THREAD_EM_ASM({ Module['duskSaves'].beginWrite(); });
 #endif
@@ -409,6 +423,12 @@ u32 mDoMemCd_Ctrl_c::getStatus(u32) {
 
 void mDoMemCd_Ctrl_c::command_format() {
     if (OSTryLockMutex(&mMutex)) {
+        if (dusk::showcase::active()) {
+            mCardState = CARD_STATE_NO_CARD_e;
+            field_0x1fc8 = 1;
+            OSUnlockMutex(&mMutex);
+            return;
+        }
         mCardCommand = COMM_FORMAT_e;
         OSUnlockMutex(&mMutex);
         OSSignalCond(&mCond);
@@ -417,6 +437,11 @@ void mDoMemCd_Ctrl_c::command_format() {
 
 #if !PLATFORM_SHIELD
 void mDoMemCd_Ctrl_c::format() {
+    if (dusk::showcase::active()) {
+        mCardState = CARD_STATE_NO_CARD_e;
+        field_0x1fc8 = 1;
+        return;
+    }
     field_0x1fc8 = 0;
 
     s32 ret = CARDFormat(mChannel);

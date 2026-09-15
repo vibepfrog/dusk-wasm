@@ -98,6 +98,55 @@ test('campaign validation accepts both regions and rejects malformed or unrelate
     assert.throws(() => inspectGci(traversal), /gczelda2/);
 });
 
+test('showcase writes cannot replace campaign snapshots and working cards are restored on exit', async () => {
+    const original = gci(9);
+    const f = fixture(new Map([[usa, original]]));
+    await f.store.initialize();
+    f.store.setIsolated(true);
+    f.store.startGame();
+    f.store.beginWrite();
+    f.FS.writeFile(liveUsa, gci(99));
+    f.store.endWrite(true);
+    await f.store.flush();
+    assert.deepEqual(f.saved.get(usa), original);
+    assert.deepEqual(f.store.download('GZ2E').bytes, original);
+    assert.deepEqual(f.syncCalls, [true]);
+    f.store.setIsolated(false);
+    assert.deepEqual(f.files.get(liveUsa), original);
+    f.store.beginWrite();
+    f.FS.writeFile(liveUsa, gci(10));
+    f.store.endWrite(true);
+    await f.store.flush();
+    assert.deepEqual(f.saved.get(usa), gci(10), 'campaign saving resumes after leaving the showcase');
+});
+
+test('leaving a showcase cannot introduce a temporary campaign for a new player', async () => {
+    const f = fixture();
+    await f.store.initialize();
+    f.store.setIsolated(true);
+    f.FS.writeFile(liveUsa, gci(99));
+    f.store.endWrite(true);
+    f.store.setIsolated(false);
+    assert.equal(f.files.has(liveUsa), false);
+    assert.equal(f.store.state().entries.length, 0);
+    assert.deepEqual(f.syncCalls, [true]);
+});
+
+test('session isolation cannot interrupt an active or queued campaign save', async () => {
+    const f = fixture(new Map([[usa, gci()]]));
+    await f.store.initialize();
+    f.store.beginWrite();
+    assert.throws(() => f.store.setIsolated(true), /Wait for campaign storage/);
+    f.defer();
+    f.store.endWrite(true);
+    await tick();
+    assert.throws(() => f.store.setIsolated(true), /Wait for campaign storage/);
+    f.finish();
+    await f.store.flush();
+    f.store.setIsolated(true);
+    assert.equal(f.store.state().isolated, true);
+});
+
 test('hydrate, import, export, and reload preserve every GCI byte', async () => {
     const f = fixture();
     await f.store.initialize();
