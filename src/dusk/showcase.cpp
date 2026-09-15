@@ -204,6 +204,9 @@ void pause() { lastFrame = readySince = 0; }
 
 void update() {
     if (!active()) return;
+    // Like the native Reset menu, wait until the logo scene has finished.
+    // Leave an early page request in the mailbox for the first playable scene.
+    if (bootPending || fpcM_SearchByName(fpcNm_LOGO_SCENE_e)) return;
     const int action = command.exchange(0, std::memory_order_relaxed);
     if (action == 12 && !exiting) {
         benchmarking = running = waiting = preparePending = false;
