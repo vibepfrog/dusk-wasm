@@ -647,7 +647,11 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         leftPane.add_section("Mouse");
         addOption("Mouse Camera", getSettings().game.enableMouseCamera,
             "Rotate the third-person camera with mouse movement. Click the game to capture the "
+#ifdef __EMSCRIPTEN__
+            "mouse; Escape releases it. 0 opens settings. Free Camera does not need to be enabled.");
+#else
             "mouse; Escape releases it. F1 opens settings. Free Camera does not need to be enabled.");
+#endif
         config_percent_select(leftPane, rightPane, getSettings().game.mouseCameraSensitivity,
             "Mouse Camera Sensitivity", "Adjusts mouse camera rotation sensitivity.", 25, 400, 5,
             [] { return !getSettings().game.enableMouseCamera; });
@@ -726,7 +730,11 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
 
         leftPane.add_section("Tools");
         addOption("Turbo Key", getSettings().game.enableTurboKeybind,
+#ifdef __EMSCRIPTEN__
+            "Hold 9 to increase game speed by up to 4x.",
+#else
             "Hold Tab to increase game speed by up to 4x.",
+#endif
             [] { return getSettings().game.speedrunMode; });
     });
 
@@ -1076,7 +1084,11 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 .key = "Enable Advanced Settings",
                 .icon = "warning",
                 .helpText = "Show advanced settings and debugging tools with "
+#ifdef __EMSCRIPTEN__
+                            "Shift+0.<br/><br/><icon class=\"warning\"/> WARNING: Debugging tools "
+#else
                             "Shift+F1.<br/><br/><icon class=\"warning\"/> WARNING: Debugging tools "
+#endif
                             "can easily break your game. Do not use on a regular save!",
                 .onChange =
                     [](bool) {

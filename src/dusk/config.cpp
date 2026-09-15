@@ -9,6 +9,9 @@
 
 #include <limits>
 #include <string>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "dusk/main.h"
 
@@ -245,7 +248,7 @@ void dusk::config::Save() {
         "Saving config to '{}'",
         reinterpret_cast<const char*>(configJsonPath.c_str()));
 
-    json j;
+    json j = json::object();
 
     for (const auto& pair : RegisteredConfigVars) {
         if (pair.second->getLayer() == ConfigVarLayer::Value) {
@@ -253,7 +256,15 @@ void dusk::config::Save() {
         }
     }
 
-    io::FileStream::WriteAllText(reinterpret_cast<const char*>(configJsonPath.c_str()), j.dump(4));
+    const auto text = j.dump(4);
+    io::FileStream::WriteAllText(reinterpret_cast<const char*>(configJsonPath.c_str()), text);
+#ifdef __EMSCRIPTEN__
+    // Persist each completed settings change on the page thread. This is
+    // independent of campaign snapshots and does not wait for tab shutdown.
+    MAIN_THREAD_EM_ASM({
+        if (Module['duskSettings']) Module['duskSettings'].save(UTF8ToString($0));
+    }, text.c_str());
+#endif
 }
 
 ConfigVarBase* dusk::config::GetConfigVar(std::string_view name) {

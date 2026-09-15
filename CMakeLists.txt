@@ -617,6 +617,7 @@ if (EMSCRIPTEN)
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/res@/res"
         "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/save_store.js"
+        "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/settings_store.js"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/texture_pack.js"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/pipeline_store.js"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/web/mouse_input.js"
@@ -633,6 +634,7 @@ if (EMSCRIPTEN)
     set_property(TARGET dusk APPEND PROPERTY LINK_DEPENDS
         "${CMAKE_SOURCE_DIR}/web/shell.html"
         "${CMAKE_SOURCE_DIR}/web/save_store.js"
+        "${CMAKE_SOURCE_DIR}/web/settings_store.js"
         "${CMAKE_SOURCE_DIR}/web/save_ui.js"
         "${CMAKE_SOURCE_DIR}/web/texture_pack.js"
         "${CMAKE_SOURCE_DIR}/web/pipeline_store.js"

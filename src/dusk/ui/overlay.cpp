@@ -136,6 +136,8 @@ Rml::String back_button_name() {
 
 #if defined(TARGET_ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS && !TARGET_OS_MACCATALYST)
 constexpr auto kMenuNotificationPrefix = "3-finger tap or";
+#elif defined(__EMSCRIPTEN__)
+constexpr auto kMenuNotificationPrefix = "Press 0 or";
 #else
 constexpr auto kMenuNotificationPrefix = "Press F1 or";
 #endif

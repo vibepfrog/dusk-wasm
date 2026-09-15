@@ -238,7 +238,12 @@ namespace dusk {
     }
 
     void ImGuiConsole::UpdateSettings() {
-        getTransientSettings().skipFrameRateLimit = getSettings().game.enableTurboKeybind && ImGui::IsKeyDown(ImGuiKey_Tab);
+#ifdef __EMSCRIPTEN__
+        constexpr ImGuiKey turboKey = ImGuiKey_9;
+#else
+        constexpr ImGuiKey turboKey = ImGuiKey_Tab;
+#endif
+        getTransientSettings().skipFrameRateLimit = getSettings().game.enableTurboKeybind && ImGui::IsKeyDown(turboKey);
 
         if (dusk::frame_interp::get_ui_tick_pending() && mDoMain::developmentMode == 1 && (mDoCPd_c::getHold(PAD_1) & (PAD_TRIGGER_R | PAD_TRIGGER_L)) == (PAD_TRIGGER_R | PAD_TRIGGER_L) && mDoCPd_c::getTrigY(PAD_1)) {
             getTransientSettings().moveLinkActive = !getTransientSettings().moveLinkActive;
@@ -259,7 +264,12 @@ namespace dusk {
             config::Save();
         }
 
-        if (ImGui::GetIO().KeyShift && ImGui::IsKeyPressed(ImGuiKey_F1)) {
+#ifdef __EMSCRIPTEN__
+        constexpr ImGuiKey advancedMenuKey = ImGuiKey_0;
+#else
+        constexpr ImGuiKey advancedMenuKey = ImGuiKey_F1;
+#endif
+        if (ImGui::GetIO().KeyShift && ImGui::IsKeyPressed(advancedMenuKey)) {
             if (getSettings().backend.enableAdvancedSettings) {
                 m_isHidden = !m_isHidden;
             } else {

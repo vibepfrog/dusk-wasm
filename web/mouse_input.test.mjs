@@ -61,10 +61,10 @@ test('Escape releases without automatically recapturing, and stale motion is dis
     assert.deepEqual(f.mouse.consume(), [0, 0]);
 });
 
-test('F1 and disabled camera release capture; settings require a new click after closing', () => {
+test('0 and disabled camera release capture; settings require a new click after closing', () => {
     const f = fixture();
     f.mouse.setEnabled(true); f.click();
-    f.doc.emit('keydown', { key: 'F1' }); f.click();
+    f.doc.emit('keydown', { key: '0', code: 'Digit0' }); f.click();
     assert.equal(f.doc.pointerLockElement, null);
     assert.equal(f.canvas.requests, 1);
     f.mouse.setEnabled(true); f.click();
@@ -83,6 +83,16 @@ test('tab hide and window blur release immediately and never replay buffered mov
     f.click(); assert.deepEqual(f.mouse.consume(), [0, 0]);
     f.win.emit('blur');
     assert.equal(f.doc.pointerLockElement, null);
+});
+
+test('browser shortcuts and numpad zero do not disable mouse camera capture', () => {
+    const f = fixture();
+    f.mouse.setEnabled(true); f.click();
+    for (const event of [{ key: 'F1', code: 'F1' }, { key: '0', code: 'Numpad0' },
+        { key: '0', code: 'Digit0', ctrlKey: true }]) {
+        f.doc.emit('keydown', event);
+        assert.equal(f.doc.pointerLockElement, f.canvas);
+    }
 });
 
 test('permission rejection is handled and a later click can retry', async () => {

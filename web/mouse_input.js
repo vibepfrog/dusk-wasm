@@ -19,8 +19,8 @@
         function show() {
             if (!status) return;
             status.hidden = !enabled && !locked();
-            status.textContent = locked() ? 'Mouse captured · Esc to release · F1 settings' :
-                (failure || 'Click the game to capture the mouse · F1 settings');
+            status.textContent = locked() ? 'Mouse captured · Esc to release · 0 settings' :
+                (failure || 'Click the game to capture the mouse · 0 settings');
         }
         function release() {
             ++generation;
@@ -72,7 +72,8 @@
         doc.addEventListener('keydown', function (event) {
             // Release before the worker opens its menus. The engine reenables
             // capture eligibility after the menu closes; only a click relocks.
-            if (event.key === 'F1') setEnabled(false);
+            if ((event.code === 'Digit0' || (!event.code && event.key === '0')) &&
+                !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) setEnabled(false);
             if (event.key === 'Escape') release();
         }, true);
         doc.addEventListener('visibilitychange', function () { if (doc.hidden) release(); });

@@ -1140,12 +1140,11 @@ constexpr int32_t k_keyboardVersion = 2;
 
 // Sensible WASD + arrow-keys defaults installed for port 0 when no
 // keyboard_bindings.dat exists, so first-run users (especially the web
-// build, where /libsdl is not persisted across reloads — see web/pre.js)
+// build, which restores selected preferences into /libsdl — see web/pre.js)
 // can play without diving into the controller-config UI to bind every
 // key by hand. WASD drives the left stick (movement), arrow keys drive
 // the right stick (camera), the diamond keys map to A/B/X/Y, and F maps
-// to Z (z-target). DPad is intentionally left unbound — TP rarely needs
-// it, and the arrow keys are already used for camera.
+// to Z. Browser defaults also bind the D-pad and both mouse triggers.
 static void install_default_keyboard_bindings_port0() {
   auto& state = g_keyboardBindings[0];
   state.m_buttonMapping = {
@@ -1155,12 +1154,23 @@ static void install_default_keyboard_bindings_port0() {
       PADKeyButtonBinding{SDL_SCANCODE_Q,      PAD_BUTTON_Y},
       PADKeyButtonBinding{SDL_SCANCODE_RETURN, PAD_BUTTON_START},
       PADKeyButtonBinding{SDL_SCANCODE_F,      PAD_TRIGGER_Z},
+#ifdef __EMSCRIPTEN__
+      PADKeyButtonBinding{PAD_KEY_MOUSE_LEFT, PAD_TRIGGER_L},
+      PADKeyButtonBinding{PAD_KEY_MOUSE_RIGHT, PAD_TRIGGER_R},
+      PADKeyButtonBinding{SDL_SCANCODE_LEFTBRACKET, PAD_BUTTON_UP},
+      PADKeyButtonBinding{SDL_SCANCODE_APOSTROPHE,  PAD_BUTTON_DOWN},
+      PADKeyButtonBinding{SDL_SCANCODE_SEMICOLON,   PAD_BUTTON_LEFT},
+      // UK #/~ (beside Enter) has DOM code Backslash, mapped by SDL to this
+      // scancode. IntlBackslash is the separate UK backslash key beside Shift.
+      PADKeyButtonBinding{SDL_SCANCODE_BACKSLASH,   PAD_BUTTON_RIGHT},
+#else
       PADKeyButtonBinding{SDL_SCANCODE_Z,      PAD_TRIGGER_L},
       PADKeyButtonBinding{SDL_SCANCODE_C,      PAD_TRIGGER_R},
       PADKeyButtonBinding{PAD_KEY_INVALID,     PAD_BUTTON_UP},
       PADKeyButtonBinding{PAD_KEY_INVALID,     PAD_BUTTON_DOWN},
       PADKeyButtonBinding{PAD_KEY_INVALID,     PAD_BUTTON_LEFT},
       PADKeyButtonBinding{PAD_KEY_INVALID,     PAD_BUTTON_RIGHT},
+#endif
   };
   state.m_axisMapping = {
       PADKeyAxisBinding{SDL_SCANCODE_D,     PAD_AXIS_LEFT_X_POS,  100},
@@ -1171,8 +1181,13 @@ static void install_default_keyboard_bindings_port0() {
       PADKeyAxisBinding{SDL_SCANCODE_LEFT,  PAD_AXIS_RIGHT_X_NEG, 100},
       PADKeyAxisBinding{SDL_SCANCODE_UP,    PAD_AXIS_RIGHT_Y_POS, 100},
       PADKeyAxisBinding{SDL_SCANCODE_DOWN,  PAD_AXIS_RIGHT_Y_NEG, 100},
+#ifdef __EMSCRIPTEN__
+      PADKeyAxisBinding{PAD_KEY_MOUSE_LEFT, PAD_AXIS_TRIGGER_L, 100},
+      PADKeyAxisBinding{PAD_KEY_MOUSE_RIGHT, PAD_AXIS_TRIGGER_R, 100},
+#else
       PADKeyAxisBinding{PAD_KEY_INVALID,    PAD_AXIS_TRIGGER_L,   0},
       PADKeyAxisBinding{PAD_KEY_INVALID,    PAD_AXIS_TRIGGER_R,   0},
+#endif
   };
   state.m_mappingsSet = true;
 }

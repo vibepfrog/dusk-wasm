@@ -136,6 +136,18 @@ Module.preRun.push(function () {
     // to write dawn_cache.db / pipeline_cache.db there. Pre-create defensively.
     FS.mkdirTree('/libsdl/TwilitRealm/Dusk');
 
+    Module['duskSettings'] = globalThis.DuskSettingsStore.create({
+        FS: FS,
+        storage: function () { return window.localStorage; },
+        notify: function (text) {
+            var status = document.getElementById('settings-status');
+            if (status) status.textContent = text;
+        },
+        logError: function (error) { console.warn('[dusk] settings storage:', error); },
+    });
+    // Synchronous hydration completes before native main loads config.json.
+    Module['duskSettings'].initialize();
+
     Module['duskPipelines'] = globalThis.DuskPipelineStore.create({ FS: FS, indexedDB: indexedDB });
     addRunDependency('shader-cache-rehydrate');
     Module['duskPipelines'].initialize().finally(function () {

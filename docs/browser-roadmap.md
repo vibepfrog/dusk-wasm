@@ -1,10 +1,43 @@
 # Browser roadmap and validation
 
+## Browser defaults and remembered settings
+
+The browser build uses these existing controls by default:
+
+| Control | Default binding |
+| --- | --- |
+| Settings | Number-row **0** |
+| Turbo (hold) | Number-row **9** |
+| D-pad Up / Down / Left / Right | **[** / **'** / **;** / **#** |
+| L / R trigger | Left / right mouse button |
+
+The **#** binding uses the UK #/~ key beside Enter (DOM `Backslash`), following
+the existing physical-key binding system. Both mouse triggers supply the existing
+digital click and full analog squeeze. These are default mapping changes;
+controller configuration continues to use the existing binding editor.
+Advanced settings, when enabled, open with **Shift+0**. Desktop builds retain
+their existing shortcuts and defaults.
+
+Free Camera, Mouse Camera and Turbo Key default to **On**. Gyro Input Method
+defaults to **Mouse**, with **0%** deadband and smoothing. This does not itself
+enable Gyro Aim. Resolution defaults to **Auto**; initial window creation reads
+the canvas CSS dimensions and lets SDL apply pixel density, without the desktop
+minimum-size call that previously reset browser geometry until a resize.
+
+Dusk's `config.json` preferences are remembered in this browser profile and
+origin using `localStorage` (`dusk-settings-v1`). They are restored before native
+startup and saved on each completed settings change. Explicit saved values take
+precedence over defaults. Disc paths/verification are session-specific and are
+excluded; campaign saves and shader recipes retain their separate stores.
+Controller/keyboard binding files are not part of this preference store.
+Clearing site data removes these preferences. If storage is unavailable, settings
+remain usable for the current session.
+
 ## Mouse Camera
 
 Backport source: [TwilitRealm/dusklight at ddc79d1](https://github.com/TwilitRealm/dusklight/tree/ddc79d151edf8291ee444a8d8ea0ed156fc6f0aa), specifically the mouse camera pixel-to-angle conversion, settings names, and `dCamera_c::freeCamera` integration. This is a targeted backport, not a rebase of all newer upstream features.
 
-Open **F1 → Input → Mouse → Mouse Camera**. Sensitivity ranges from 25% to 400%; **Invert Mouse Y** reverses vertical rotation. Close settings and click the canvas to capture the mouse. Escape releases capture; opening F1 settings or leaving the tab also releases it. On returning, click to capture again. **Free Camera** need not be enabled. Camera restrictions such as targeting and scripted camera styles remain in place.
+Open **0 → Input → Mouse → Mouse Camera**. Sensitivity ranges from 25% to 400%; **Invert Mouse Y** reverses vertical rotation. Close settings and click the canvas to capture the mouse. Escape releases capture; opening 0 settings or leaving the tab also releases it. On returning, click to capture again. **Free Camera** need not be enabled. Camera restrictions such as targeting and scripted camera styles remain in place.
 
 The browser requests pointer lock synchronously inside the page click handler, because a proxied SDL call on the render worker loses the originating user gesture. It accumulates relative pixel movement and consumes it once per simulation tick, sharing that sample with this branch's existing **Gyro Input Method → Mouse** aiming mode. Camera sensitivity and the existing gyro aiming sensitivity remain independent. Interpolated render frames do not replay or scale mouse input.
 

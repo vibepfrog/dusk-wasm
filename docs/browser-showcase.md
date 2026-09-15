@@ -9,7 +9,7 @@ ready; they stay disabled during shader preparation and scene loading.
 
 The showcase panel offers Ordon Village, Ordon Spring and the Fishing Pond.
 Each selected visit creates a temporary human character with a sword, shield,
-lantern and bow. Free exploration uses the normal controls. Press **F1** for
+lantern and bow. Free exploration uses the normal controls. Press **0** for
 settings, including Mouse Camera, and **Esc** to release the pointer before
 using the page controls.
 

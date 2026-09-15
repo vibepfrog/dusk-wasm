@@ -315,6 +315,12 @@ NavCommand map_nav_event(const Rml::Event& event) noexcept {
         return NavCommand::Cancel;
     case Rml::Input::KeyIdentifier::KI_RETURN:
         return NavCommand::Confirm;
+#ifdef __EMSCRIPTEN__
+    case Rml::Input::KeyIdentifier::KI_0:
+        return (event.GetParameter<int>("shift_key", 0) || event.GetParameter<int>("ctrl_key", 0) ||
+                event.GetParameter<int>("alt_key", 0) || event.GetParameter<int>("meta_key", 0))
+                   ? NavCommand::None : NavCommand::Menu;
+#endif
     case Rml::Input::KeyIdentifier::KI_F1:
         return event.GetParameter<int>("shift_key", 0) ? NavCommand::None : NavCommand::Menu;
     case Rml::Input::KeyIdentifier::KI_NEXT:

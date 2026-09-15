@@ -309,6 +309,14 @@ void handle_event(SDL_Event& event) noexcept {
   }
 
   switch (event.type) {
+#ifdef __EMSCRIPTEN__
+  case SDL_EVENT_KEY_DOWN:
+  case SDL_EVENT_KEY_UP:
+    // F1 belongs to the browser. Gamepad menu events still use RmlUI's
+    // synthetic KI_F1; only the physical keyboard shortcut is removed here.
+    if (event.key.scancode == SDL_SCANCODE_F1) return;
+    break;
+#endif
   case SDL_EVENT_MOUSE_MOTION:
     handle_mouse_motion(event.motion);
     return;

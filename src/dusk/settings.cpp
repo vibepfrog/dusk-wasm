@@ -3,6 +3,18 @@
 
 namespace dusk {
 
+#ifdef __EMSCRIPTEN__
+constexpr bool kBrowserControls = true;
+constexpr GyroMode kDefaultGyroMode = GyroMode::Mouse;
+constexpr float kDefaultGyroSmoothing = 0.0f;
+constexpr float kDefaultGyroDeadband = 0.0f;
+#else
+constexpr bool kBrowserControls = false;
+constexpr GyroMode kDefaultGyroMode = GyroMode::Sensor;
+constexpr float kDefaultGyroSmoothing = 0.65f;
+constexpr float kDefaultGyroDeadband = 0.04f;
+#endif
+
 UserSettings g_userSettings = {
     .video = {
         .enableFullscreen {"video.enableFullscreen", false},
@@ -68,20 +80,20 @@ UserSettings g_userSettings = {
         .midnasLamentNonStop {"game.midnasLamentNonStop", false},
 
         // Input
-        .enableMouseCamera {"game.enableMouseCamera", false},
+        .enableMouseCamera {"game.enableMouseCamera", kBrowserControls},
         .mouseCameraSensitivity {"game.mouseCameraSensitivity", 1.0f},
         .invertMouseY {"game.invertMouseY", false},
-        .gyroMode {"game.gyroMode", GyroMode::Sensor},
+        .gyroMode {"game.gyroMode", kDefaultGyroMode},
         .enableGyroAim {"game.enableGyroAim", false},
         .enableGyroRollgoal {"game.enableGyroRollgoal", false},
         .gyroSensitivityX {"game.gyroSensitivityX", 1.0f},
         .gyroSensitivityY {"game.gyroSensitivityY", 1.0f},
         .gyroSensitivityRollgoal {"game.gyroSensitivityRollgoal", 1.0f},
-        .gyroSmoothing {"game.gyroSmoothing", 0.65f},
-        .gyroDeadband {"game.gyroDeadband", 0.04f},
+        .gyroSmoothing {"game.gyroSmoothing", kDefaultGyroSmoothing},
+        .gyroDeadband {"game.gyroDeadband", kDefaultGyroDeadband},
         .gyroInvertPitch {"game.gyroInvertPitch", false},
         .gyroInvertYaw {"game.gyroInvertYaw", false},
-        .freeCamera {"game.freeCamera", false},
+        .freeCamera {"game.freeCamera", kBrowserControls},
         .invertCameraXAxis {"game.invertCameraXAxis", false},
         .invertCameraYAxis {"game.invertCameraYAxis", false},
         .freeCameraSensitivity {"game.freeCameraSensitivity", 1.0f},
@@ -109,7 +121,7 @@ UserSettings g_userSettings = {
         .restoreWiiGlitches {"game.restoreWiiGlitches", false},
 
         // Controls
-        .enableTurboKeybind {"game.enableTurboKeybind", false},
+        .enableTurboKeybind {"game.enableTurboKeybind", kBrowserControls},
 
         // Tools
         .speedrunMode {"game.speedrunMode", false},

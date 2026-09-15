@@ -28,7 +28,11 @@ extern "C" void Android_UnlockActivityMutex(void);
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <vector>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#endif
 
 #ifdef AURORA_ENABLE_RMLUI
 #include "rmlui.hpp"
@@ -225,6 +229,27 @@ void process_event(SDL_Event& event) {
 }
 } // namespace
 
+Vec2<int> initial_window_size() {
+  int width = std::max(640, static_cast<int>(g_config.windowWidth));
+  int height = std::max(480, static_cast<int>(g_config.windowHeight));
+  if (g_config.windowWidth == 0 || g_config.windowHeight == 0) {
+    width = 1280;
+    height = 960;
+  }
+#ifdef __EMSCRIPTEN__
+  // Supply the real CSS viewport as SDL's initial logical size. Otherwise
+  // window creation can retain the desktop dimensions until its first resize.
+  // SDL_WINDOW_HIGH_PIXEL_DENSITY applies DPR to the backing framebuffer.
+  double cssWidth = 0, cssHeight = 0;
+  if (emscripten_get_element_css_size("#canvas", &cssWidth, &cssHeight) == EMSCRIPTEN_RESULT_SUCCESS &&
+      std::isfinite(cssWidth) && std::isfinite(cssHeight) && cssWidth > 0 && cssHeight > 0) {
+    width = std::max(1, static_cast<int>(std::lround(cssWidth)));
+    height = std::max(1, static_cast<int>(std::lround(cssHeight)));
+  }
+#endif
+  return {width, height};
+}
+
 const AuroraEvent* poll_events() {
   g_events.clear();
 
@@ -285,18 +310,7 @@ bool create_window(AuroraBackend backend) {
   default:
     break;
   }
-  auto width = static_cast<Sint32>(g_config.windowWidth);
-  auto height = static_cast<Sint32>(g_config.windowHeight);
-  if (width == 0 || height == 0) {
-    width = 1280;
-    height = 960;
-  }
-  if (width < 640) {
-    width = 640;
-  }
-  if (height < 480) {
-    height = 480;
-  }
+  const auto [width, height] = initial_window_size();
 
   Sint32 posX = g_config.windowPosX;
   Sint32 posY = g_config.windowPosY;
@@ -323,7 +337,13 @@ bool create_window(AuroraBackend backend) {
     Log.error("Failed to create window: {}", SDL_GetError());
     return false;
   }
+#ifndef __EMSCRIPTEN__
   SDL_SetWindowMinimumSize(g_window, 640, 480);
+#else
+  // SDL 3.4.4's minimum-size setter reapplies window->floating dimensions,
+  // overwriting the CSS size read by its Emscripten CreateWindow backend.
+  // The page controls browser geometry, including viewports below 640x480.
+#endif
   set_window_icon();
   return true;
 }
