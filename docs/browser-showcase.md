@@ -4,6 +4,8 @@ Before choosing a supported USA/EUR disc, enable **Quick showcase & benchmark**.
 The engine loads the common game resources, then enters Ordon Village directly.
 No campaign save or opening new-game cutscene is required. The selected disc and
 optional HD texture pack remain local files, as in campaign mode.
+Location and benchmark controls become available once the first location is
+ready; they stay disabled during shader preparation and scene loading.
 
 The showcase panel offers Ordon Village, Ordon Spring and the Fishing Pond.
 Each selected visit creates a temporary human character with a sword, shield,
@@ -63,7 +65,11 @@ campaign.
 
 Automated browser-code tests cover opt-in launch, benchmark statistics and
 campaign isolation/restoration, including a player with no existing save. The
-full build must compile the engine hooks and run the generated-shell checks.
+startup regression tests compile the actual C++ logo/showcase entry points with
+a scene-manager fixture, checking repeated logo frames, rejected transition
+requests, campaign startup/reset and controls during preparation. They need
+a host C++ compiler (`c++`) alongside Node.
+The full build must compile the engine hooks and run the generated-shell checks.
 An actual supported disc is needed to verify entrances, local scripted events,
 camera collision, all three completed routes, return to campaign, and saves on
 both supported regions. Synthetic storage bytes are not gameplay validation.

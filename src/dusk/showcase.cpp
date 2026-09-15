@@ -42,6 +42,7 @@ std::atomic<bool> isolated{false};
 // stay on the application pthread. The card thread only reads isolated.
 std::atomic<int> command{0}, hidden{0};
 bool bootPending = false, preparePending = false, waiting = false, exiting = false;
+fpc_ProcID bootLogoID = fpcM_ERROR_PROCESS_ID_e;
 bool benchmarking = false, touring = false, running = false;
 int sceneIndex = 0, pass = 0;
 double lastFrame = 0, elapsed = 0, readySince = 0, lastStatus = 0;
@@ -65,7 +66,7 @@ PresentationKey presentation_key() {
 void status(const char* text) {
     MAIN_THREAD_EM_ASM({
         if (window.duskShowcaseUI) window.duskShowcaseUI.status(UTF8ToString($0), $1, !!$2);
-    }, text, sceneIndex, benchmarking || waiting || exiting);
+    }, text, sceneIndex, bootPending || benchmarking || waiting || exiting);
 }
 
 void set_stage() {
@@ -119,6 +120,7 @@ void initialize(bool enabled) {
     if (!enabled) return;
     isolated.store(true, std::memory_order_relaxed);
     bootPending = true;
+    bootLogoID = fpcM_ERROR_PROCESS_ID_e;
     samples.reserve(8192);
     MAIN_THREAD_EM_ASM({
         Module['duskSaves'].setIsolated(true);
@@ -136,11 +138,20 @@ void initialize(bool enabled) {
 }
 
 bool boot(scene_class* logo) {
-    if (!active() || !bootPending) return false;
-    bootPending = false;
-    set_stage();
-    fopScnM_ChangeReq(logo, fpcNm_PLAY_SCENE_e, 0, 5);
-    return true;
+    if (!active()) return false;
+    if (bootPending) {
+        set_stage();
+        if (fopScnM_ChangeReq(logo, fpcNm_PLAY_SCENE_e, 0, 5)) {
+            bootPending = false;
+            bootLogoID = fopScnM_GetID(logo);
+        }
+        return true;
+    }
+    // The logo calls this on every draw until the scene change completes.
+    // Keep claiming that instance after acceptance: the normal opening path
+    // would replace both our stage and our queued scene. A new logo instance
+    // after Reset must be allowed through to the campaign title screen.
+    return fopScnM_GetID(logo) == bootLogoID;
 }
 
 void prepare_scene() {
@@ -191,6 +202,7 @@ void prepare_scene() {
 void campaign_ready() {
     if (!isolated.exchange(false, std::memory_order_relaxed)) return;
     bootPending = preparePending = waiting = benchmarking = touring = running = exiting = false;
+    bootLogoID = fpcM_ERROR_PROCESS_ID_e;
     command.store(0, std::memory_order_relaxed);
     samples.clear();
     resetAutoSave();
