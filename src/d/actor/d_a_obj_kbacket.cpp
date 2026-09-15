@@ -77,7 +77,7 @@ int daObj_KBacket_c::create() {
             getType() & 0xff, fopAcM_GetParam(this), fopAcM_GetRoomNo(this));
         OS_REPORT("\n");
 
-        if (fopAcM_entrySolidHeap(this, (heapCallbackFunc)createHeapCallBack, 0x810) == 0) {
+        if (fopAcM_entrySolidHeap(this, createHeapCallBack, 0x810) == 0) {
             return cPhs_ERROR_e;
         }
 
@@ -540,8 +540,10 @@ int daObj_KBacket_c::Draw() {
     return 1;
 }
 
-void daObj_KBacket_c::createHeapCallBack(fopAc_ac_c* param_0) {
-    ((daObj_KBacket_c*)param_0)->CreateHeap();
+int daObj_KBacket_c::createHeapCallBack(fopAc_ac_c* param_0) {
+    // The heap manager requires an int result. Casting a void callback traps
+    // at the indirect call in WebAssembly and also loses allocation failures.
+    return ((daObj_KBacket_c*)param_0)->CreateHeap();
 }
 
 void daObj_KBacket_c::setEnvTevColor() {

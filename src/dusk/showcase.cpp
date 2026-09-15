@@ -122,7 +122,8 @@ void initialize(bool enabled) {
     samples.reserve(8192);
     MAIN_THREAD_EM_ASM({
         Module['duskSaves'].setIsolated(true);
-        var slot = $0 >> 2, visibility = $1 >> 2;
+        var slot = $0 >> 2;
+        var visibility = $1 >> 2;
         var updateVisibility = function () { Atomics.store(HEAP32, visibility, document.hidden ? 1 : 0); };
         document.addEventListener('visibilitychange', updateVisibility);
         updateVisibility();
