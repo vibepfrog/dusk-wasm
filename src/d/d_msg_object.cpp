@@ -569,6 +569,10 @@ int dMsgObject_c::_draw() {
 }
 
 int dMsgObject_c::_delete() {
+#if DUSK_TRACE_ENABLE
+    fprintf(stderr, "[message] destroy object=%p renderer=%p reference=%p stage=%s\n",
+            (void*)this, (void*)mpRenProc, (void*)mpRefer, dComIfGp_getStartStageName());
+#endif
     mpResCont->destroyResource_all();
     if (mpScrnDraw != NULL) {
         JKR_DELETE(mpScrnDraw);
@@ -2282,6 +2286,11 @@ int dMsgObject_Create(msg_class* param_1) {
     fopMsgM_setStageLayer(param_1);
     param_1->mode = 0;
     int rv = obj->_create(param_1);
+#if DUSK_TRACE_ENABLE
+    fprintf(stderr, "[message] created object=%p renderer=%p reference=%p status=%p value=%u stage=%s\n",
+            (void*)obj, (void*)obj->mpRenProc, (void*)obj->mpRefer,
+            (void*)&param_1->mode, (unsigned)param_1->mode, dComIfGp_getStartStageName());
+#endif
     g_MsgObject_HIO_c.field_0x4 = -1;
     OS_REPORT("### msg object size =====> %d\n", dComIfGp_getMsgExpHeap()->getTotalFreeSize());
     mDoExt_setCurrentHeap(prevHeap);

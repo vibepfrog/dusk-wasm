@@ -108,6 +108,9 @@ jobs:
           version: 5.0.6
           actions-cache-folder: emsdk-cache
 
+      - name: Test message lifecycle in WebAssembly
+        run: DUSK_MESSAGE_TEST_WASM=1 node --test web/message_lifecycle.test.mjs
+
       # ── Cache: Cargo registry + git index ──────────────────────────────
       # ~100 MB. Invalidated only when AuroraNodProvider.cmake changes the
       # nod version pin (and therefore the dep set).

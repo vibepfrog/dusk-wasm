@@ -360,7 +360,10 @@ inline void dMsgObject_demoMessageGroup() {
 }
 
 inline bool dMsgObject_isTalkNowCheck() {
-    return dMsgObject_getMsgObjectClass()->getStatus() == 1 ? false : true;
+    // Actors can execute from create() before the HUD's queued message process
+    // exists. No message object means no active dialogue during that interval.
+    dMsgObject_c* msg = dMsgObject_getMsgObjectClass();
+    return msg != NULL && msg->getStatus() != 1;
 }
 
 inline bool dMsgObject_isKillMessageFlag() {

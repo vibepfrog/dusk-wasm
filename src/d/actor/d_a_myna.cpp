@@ -14,6 +14,9 @@
 #include "Z2AudioLib/Z2Instances.h"
 #include "d/d_s_play.h"
 #include <cstring>
+#if DUSK_TRACE_ENABLE
+#include <cstdio>
+#endif
 
 static daMyna_c::ProcFunc init_proc[] = {
     &daMyna_c::attack_wait_init,
@@ -351,6 +354,12 @@ int daMyna_c::create() {
     mCreature.init(&current.pos, &eyePos, 3, 1);
     initiate();
     setRoomNo();
+#if DUSK_TRACE_ENABLE
+    fprintf(stderr, "[myna] create/first-execute actor=%p id=%u stage=%s room=%d params=%08x heap=%p model=%p msg=%p\n",
+            (void*)this, (unsigned)fopAcM_GetID(this), dComIfGp_getStartStageName(),
+            (int)home.roomNo, (unsigned)fopAcM_GetParam(this), (void*)heap,
+            (void*)mpMorf->getModel(), (void*)dMsgObject_getMsgObjectClass());
+#endif
     execute();
     field_0x844.set(field_0x82C);
     field_0x850.set(field_0x838);
@@ -358,6 +367,11 @@ int daMyna_c::create() {
 }
 
 int daMyna_c::destroy() {
+#if DUSK_TRACE_ENABLE
+    fprintf(stderr, "[myna] destroy actor=%p id=%u stage=%s room=%d heap=%p msg=%p\n",
+            (void*)this, (unsigned)fopAcM_GetID(this), dComIfGp_getStartStageName(),
+            (int)home.roomNo, (void*)heap, (void*)dMsgObject_getMsgObjectClass());
+#endif
     dComIfG_resDelete(&mPhase, "Npc_myna");
     if (heap != NULL) {
         mpMorf->stopZelAnime();
@@ -398,6 +412,15 @@ int daMyna_c::draw() {
 }
 
 int daMyna_c::execute() {
+#if DUSK_TRACE_ENABLE
+    static unsigned missingMessageLogs = 0;
+    if (dMsgObject_getMsgObjectClass() == NULL && missingMessageLogs < 16) {
+        ++missingMessageLogs;
+        fprintf(stderr, "[myna] execute before message creation actor=%p id=%u stage=%s room=%d\n",
+                (void*)this, (unsigned)fopAcM_GetID(this), dComIfGp_getStartStageName(),
+                (int)home.roomNo);
+    }
+#endif
     u8 uVar1 = field_0x92C;
     u8 uVar2 = field_0x935;
     bool isTalkNow = dMsgObject_isTalkNowCheck();
