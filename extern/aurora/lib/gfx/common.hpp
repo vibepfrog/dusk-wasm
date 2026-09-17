@@ -2,6 +2,7 @@
 
 #include "../internal.hpp"
 #include "../webgpu/gpu.hpp"
+#include "pipeline_async.hpp"
 
 #include <cstdint>
 #include <cstdlib>

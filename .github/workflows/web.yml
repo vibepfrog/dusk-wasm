@@ -111,6 +111,16 @@ jobs:
       - name: Test message lifecycle in WebAssembly
         run: DUSK_MESSAGE_TEST_WASM=1 node --test web/message_lifecycle.test.mjs
 
+      - name: Test asynchronous pipeline WebGPU bridge
+        run: |
+          mkdir -p build/async-pipeline-test
+          em++ -std=c++20 -O1 -g -pthread -fwasm-exceptions --use-port=emdawnwebgpu \
+            -sPROXY_TO_PTHREAD=1 -sPTHREAD_POOL_SIZE=1 \
+            -sJSPI=1 -sASSERTIONS=2 -sENVIRONMENT=node -sEXIT_RUNTIME=1 \
+            extern/aurora/tests/pipeline_async_webgpu_test.cpp \
+            -o build/async-pipeline-test/bridge.js
+          timeout 30s node --experimental-wasm-jspi build/async-pipeline-test/bridge.js
+
       # ── Cache: Cargo registry + git index ──────────────────────────────
       # ~100 MB. Invalidated only when AuroraNodProvider.cmake changes the
       # nod version pin (and therefore the dep set).

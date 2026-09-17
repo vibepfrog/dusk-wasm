@@ -2,6 +2,7 @@
 
 #ifdef AURORA_ENABLE_GX
 #include "gfx/common.hpp"
+#include "gfx/pipeline_cache.hpp"
 #include "gx/fifo.hpp"
 #include "imgui.hpp"
 #include "webgpu/gpu.hpp"
@@ -368,7 +369,13 @@ const AuroraEvent* update() noexcept {
     g_initialFrame = false;
     input::initialize();
   }
-  return window::poll_events();
+  const auto* events = window::poll_events();
+#if defined(__EMSCRIPTEN__) && defined(AURORA_ENABLE_GX)
+  // This update also runs when drawing is paused/hidden. Completion cannot
+  // depend on a new draw or another lookup of the shader that requested it.
+  gfx::service_pipeline_compilation();
+#endif
+  return events;
 }
 
 bool begin_frame() noexcept {
@@ -417,6 +424,11 @@ void end_frame() noexcept {
   ZoneScoped;
 #ifdef AURORA_ENABLE_GX
   gx::fifo::drain();
+#ifdef __EMSCRIPTEN__
+  // All pipelines remain mandatory in milestone 1, including one-time EFB
+  // producers. Complete them before encoding and before acquiring the surface.
+  gfx::end_pipeline_frame();
+#endif
   const auto encoderDescriptor = wgpu::CommandEncoderDescriptor{
       .label = "Redraw encoder",
   };

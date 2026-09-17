@@ -483,7 +483,8 @@ struct BindGroupRanges {
 };
 void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXVtxFmt fmt) noexcept;
 wgpu::RenderPipeline build_pipeline(const PipelineConfig& config, ArrayRef<wgpu::VertexBufferLayout> vtxBuffers,
-                                    wgpu::ShaderModule shader, const char* label) noexcept;
+                                    wgpu::ShaderModule shader, const char* label,
+                                    gfx::PipelineCompletion complete = {});
 wgpu::ShaderModule build_shader(const ShaderConfig& config) noexcept;
 GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept;
 

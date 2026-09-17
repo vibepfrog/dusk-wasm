@@ -8,10 +8,10 @@
 namespace aurora::gx {
 static Module Log("aurora::gx");
 
-wgpu::RenderPipeline create_pipeline(const PipelineConfig& config) {
+wgpu::RenderPipeline create_pipeline(const PipelineConfig& config, gfx::PipelineCompletion complete) {
   ZoneScoped;
   const auto shader = build_shader(config.shaderConfig);
-  return build_pipeline(config, {}, shader, "GX Pipeline");
+  return build_pipeline(config, {}, shader, "GX Pipeline", std::move(complete));
 }
 
 void render(const DrawData& data, const wgpu::RenderPassEncoder& pass) {

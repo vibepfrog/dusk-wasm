@@ -22,7 +22,7 @@ namespace aurora::gfx::clear {
 using webgpu::g_device;
 using webgpu::g_graphicsConfig;
 
-wgpu::RenderPipeline create_pipeline(const PipelineConfig& config) {
+wgpu::RenderPipeline create_pipeline(const PipelineConfig& config, PipelineCompletion complete) {
   ZoneScoped;
   wgpu::ShaderSourceWGSL sourceDescriptor{};
   sourceDescriptor.code = R"""(
@@ -109,7 +109,7 @@ fn fs_main() -> @location(0) vec4<f32> {
           },
       .fragment = &fragmentState,
   };
-  return gfx::create_render_pipeline(&pipelineDescriptor);
+  return gfx::create_render_pipeline(&pipelineDescriptor, std::move(complete));
 }
 
 void render(const DrawData& data, const wgpu::RenderPassEncoder& pass, const wgpu::Extent3D& targetSize) {

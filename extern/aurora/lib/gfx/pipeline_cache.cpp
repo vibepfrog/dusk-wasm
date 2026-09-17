@@ -1,4 +1,7 @@
 #include "pipeline_cache.hpp"
+#ifdef __EMSCRIPTEN__
+#include "async_pipeline_queue.hpp"
+#endif
 
 #include "clear.hpp"
 #include "../gx/pipeline.hpp"
@@ -60,18 +63,17 @@ constexpr size_t BuildPipelinesPerFrame = 1;
 #endif
 
 #ifdef __EMSCRIPTEN__
-// Rendering stays on its owning pthread; needed pipelines must be ready
-// before draw replay. Startup warmup runs before any frame is active.
-static bool g_webPrewarming = false;
 namespace diag {
 uint64_t total_bind_failures = 0;
 uint64_t total_pipelines_created = 0;
 uint64_t bind_failures_this_frame = 0;
 uint64_t pipelines_created_this_frame = 0;
-uint64_t pipelines_drained_this_frame = 0;
 uint32_t frames_since_summary = 0;
 double compile_ms = 0.0;
 double longest_compile_ms = 0.0;
+uint64_t submitted_pipelines = 0;
+uint64_t failed_pipelines = 0;
+double protected_wait_ms = 0.0;
 }
 #endif
 
@@ -80,7 +82,7 @@ static auto create_measured_pipeline(Factory&& create) {
 #ifdef __EMSCRIPTEN__
   const double start = emscripten_get_now();
 #endif
-  auto result = create();
+  auto result = create(PipelineCompletion{});
 #ifdef __EMSCRIPTEN__
   const double elapsed = emscripten_get_now() - start;
   diag::compile_ms += elapsed;
@@ -95,6 +97,12 @@ static absl::flat_hash_map<PipelineRef, CachedPipeline> g_pipelines;
 static std::deque<PendingPipeline> g_priorityPipelines;
 static std::deque<PendingPipeline> g_backgroundPipelines;
 static absl::flat_hash_set<PipelineRef> g_pendingPipelines;
+#ifdef __EMSCRIPTEN__
+using WebPipelineQueue = AsyncPipelineQueue<PipelineRef, wgpu::RenderPipeline>;
+static WebPipelineQueue g_webPipelineQueue{2};
+static bool g_webPipelineCacheActive = false;
+static std::string g_webPipelineFailure;
+#endif
 
 static sqlite3* g_pipelineCacheDb = nullptr;
 static sqlite3_stmt* g_pipelineCacheLoadStmt = nullptr;
@@ -202,7 +210,21 @@ static PipelineRef find_pipeline_impl(ShaderType type, const PipelineConfig& con
         pipelineIt->second.firstFrameUsed = firstFrameUsed;
         cacheWrite = make_pipeline_cache_write(type, hash, config, firstFrameUsed);
       }
-    } else if (g_pendingPipelines.contains(hash)) {
+    }
+#ifdef __EMSCRIPTEN__
+    else {
+      ASSERT(g_webPipelineCacheActive && g_webPipelineQueue.active(),
+             "Pipeline request after renderer/device shutdown: {}", g_webPipelineFailure);
+      auto request = g_webPipelineQueue.request(
+          hash, firstFrameUsed, g_pipelineFrameActive,
+          [create = std::move(cb)](PipelineCompletion done) { create(std::move(done)); });
+      if (persist && (request.inserted || request.earlierUse)) {
+        cacheWrite = make_pipeline_cache_write(type, hash, config, firstFrameUsed);
+      }
+      notifyWorker = request.inserted;
+    }
+#else
+    else if (g_pendingPipelines.contains(hash)) {
       auto* pending = touch_pending_pipeline(hash, g_pipelineFrameActive);
       if (pending != nullptr && firstFrameUsed < pending->firstFrameUsed) {
         pending->firstFrameUsed = firstFrameUsed;
@@ -221,10 +243,6 @@ static PipelineRef find_pipeline_impl(ShaderType type, const PipelineConfig& con
         }
         ++g_pipelinesPerFrame;
         ++createdPipelines;
-#ifdef __EMSCRIPTEN__
-        ++diag::pipelines_created_this_frame;
-        ++diag::total_pipelines_created;
-#endif
       } else {
         auto& targetQueue = g_pipelineFrameActive ? g_priorityPipelines : g_backgroundPipelines;
         targetQueue.emplace_back(PendingPipeline{
@@ -239,6 +257,7 @@ static PipelineRef find_pipeline_impl(ShaderType type, const PipelineConfig& con
         notifyWorker = true;
       }
     }
+#endif
   }
 
   if (cacheWrite) {
@@ -246,7 +265,9 @@ static PipelineRef find_pipeline_impl(ShaderType type, const PipelineConfig& con
   }
 
   if (notifyWorker) {
+#ifndef __EMSCRIPTEN__
     g_pipelineCv.notify_one();
+#endif
     ++queuedPipelines;
   }
 
@@ -561,7 +582,8 @@ static void load_pipeline_cache_entries(ShaderType type, uint32_t configVersion,
     if (!input.read(reinterpret_cast<char*>(&config), sizeof(config))) break;
     const uint64_t hash = uint64_t(row[4]) | uint64_t(row[5]) << 32;
     if (config.version != configVersion || xxh3_hash(config, static_cast<HashType>(type)) != hash) continue;
-    find_pipeline_impl(type, config, [=] { return create(config); }, false, row[3]);
+    find_pipeline_impl(type, config,
+                       [=](PipelineCompletion done) { return create(config, std::move(done)); }, false, row[3]);
   }
   return;
 #endif
@@ -596,7 +618,8 @@ static void load_pipeline_cache_entries(ShaderType type, uint32_t configVersion,
       continue;
     }
 
-    find_pipeline_impl(type, config, [=] { return create(config); }, false, firstFrameUsed);
+    find_pipeline_impl(type, config,
+                       [=](PipelineCompletion done) { return create(config, std::move(done)); }, false, firstFrameUsed);
   }
 
   if (ret != SQLITE_DONE) {
@@ -665,6 +688,71 @@ PipelineRef find_pipeline(ShaderType type, const gx::PipelineConfig& config, New
   return find_pipeline_impl(type, config, std::move(cb), true, std::nullopt);
 }
 
+#ifdef __EMSCRIPTEN__
+void service_pipeline_compilation(size_t maxSubmissions) {
+  if (!g_webPipelineCacheActive) return;
+  // Always pump, even with zero submission budget or no new cache lookups.
+  // Never hold g_pipelineMutex while invoking the browser or user callbacks.
+  if (webgpu::g_instance) webgpu::g_instance.ProcessEvents();
+  if (!g_webPipelineQueue.active()) return;
+  if (g_webPipelineFailure.empty()) {
+    const double start = emscripten_get_now();
+    const auto submitted = g_webPipelineQueue.service(maxSubmissions);
+    if (submitted) {
+      const double elapsed = emscripten_get_now() - start;
+      diag::compile_ms += elapsed; // CPU preparation/submission, not GPU latency.
+      diag::longest_compile_ms = std::max(diag::longest_compile_ms, elapsed);
+      diag::submitted_pipelines += submitted;
+    }
+  }
+  for (auto& job : g_webPipelineQueue.take_completed()) {
+    --queuedPipelines;
+    if (job->status == WebPipelineQueue::Status::Ready) {
+      {
+        std::lock_guard lock{g_pipelineMutex};
+        g_pipelines.try_emplace(job->key, CachedPipeline{
+            .pipeline = std::move(job->pipeline), .firstFrameUsed = job->firstFrameUsed});
+      }
+      ++createdPipelines;
+      ++diag::pipelines_created_this_frame;
+      ++diag::total_pipelines_created;
+    } else {
+      ++diag::failed_pipelines;
+      if (g_webPipelineFailure.empty()) {
+        g_webPipelineFailure = fmt::format("Pipeline {} failed: {}", job->key, job->error);
+        Log.error("{}", g_webPipelineFailure);
+      }
+    }
+  }
+}
+
+void cancel_pipeline_compilation(std::string reason) {
+  if (!g_webPipelineCacheActive) return;
+  g_webPipelineFailure = std::move(reason);
+  g_webPipelineQueue.cancel();
+  queuedPipelines = 0;
+}
+
+static void require_pipeline_success() {
+  if (!g_webPipelineFailure.empty()) Log.fatal("{}", g_webPipelineFailure);
+}
+
+// Milestone 1 keeps EVERY draw and capture complete. This is an explicit
+// readiness barrier before command encoding/surface acquisition, not part of
+// ordinary queue service. JSPI yields the worker so promises and input proceed.
+static void finish_pipeline_compilation() {
+  const double start = emscripten_get_now();
+  const bool waited = g_webPipelineQueue.pending() != 0;
+  do {
+    service_pipeline_compilation(2);
+    require_pipeline_success();
+    if (!g_webPipelineQueue.pending()) break;
+    emscripten_sleep(0);
+  } while (true);
+  if (waited) diag::protected_wait_ms += emscripten_get_now() - start;
+}
+#endif
+
 void initialize_pipeline_cache() {
   g_pipelineCacheBroken = false;
   g_pipelineCacheWriterStop = false;
@@ -680,24 +768,32 @@ void initialize_pipeline_cache() {
   }
 
 #ifdef __EMSCRIPTEN__
-  g_webPrewarming = true;
+  g_webPipelineQueue.reset();
+  g_webPipelineFailure.clear();
+  g_webPipelineCacheActive = true;
+  g_pipelines.clear();
+  queuedPipelines = 0;
+  createdPipelines = 0;
+  diag::total_bind_failures = diag::total_pipelines_created = 0;
+  diag::bind_failures_this_frame = diag::pipelines_created_this_frame = 0;
+  diag::submitted_pipelines = diag::failed_pipelines = 0;
+  diag::frames_since_summary = 0;
+  diag::compile_ms = diag::longest_compile_ms = diag::protected_wait_ms = 0;
 #endif
   load_pipeline_cache();
 #ifdef __EMSCRIPTEN__
-  const size_t total = g_pipelines.size() + g_pendingPipelines.size();
+  const size_t total = g_pipelines.size() + g_webPipelineQueue.pending();
   if (total) Log.info("Preparing {} saved shader pipelines before play", total);
-  while (!g_pendingPipelines.empty()) {
+  while (g_webPipelineQueue.pending()) {
     MAIN_THREAD_EM_ASM({
       if (Module['duskPipelines']) Module['duskPipelines'].status('Preparing shaders: ' + $0 + ' / ' + $1);
       if (Module.setStatus) Module.setStatus('Preparing shaders: ' + $0 + ' / ' + $1);
     }, g_pipelines.size(), total);
-    g_pipelinesPerFrame = 0;
-    pipeline_worker();
-    emscripten_sleep(0);
+    service_pipeline_compilation(2);
+    require_pipeline_success();
+    if (g_webPipelineQueue.pending()) emscripten_sleep(0);
   }
-  g_webPrewarming = false;
   g_pipelinesPerFrame = 0;
-  diag::compile_ms = diag::longest_compile_ms = 0;
   MAIN_THREAD_EM_ASM({
     if (Module['duskPipelines']) Module['duskPipelines'].status($0
       ? $0 + ' shaders prepared. New shaders will be remembered as you play.'
@@ -710,26 +806,23 @@ void initialize_pipeline_cache() {
   }
 }
 
-wgpu::RenderPipeline create_render_pipeline(const wgpu::RenderPipelineDescriptor* descriptor) {
+wgpu::RenderPipeline create_render_pipeline(const wgpu::RenderPipelineDescriptor* descriptor,
+                                           PipelineCompletion complete) {
 #ifdef __EMSCRIPTEN__
-  if (g_webPrewarming) {
-    // Resolve GPU compilation during warmup, not at the first draw. JSPI
-    // suspends only the render pthread; the page stays responsive.
-    auto result = std::make_shared<wgpu::RenderPipeline>();
-    const auto future = webgpu::g_device.CreateRenderPipelineAsync(
-        descriptor, wgpu::CallbackMode::WaitAnyOnly,
-        [result](wgpu::CreatePipelineAsyncStatus status, wgpu::RenderPipeline pipeline, wgpu::StringView) {
-          if (status == wgpu::CreatePipelineAsyncStatus::Success) *result = std::move(pipeline);
-        });
-    const auto status = webgpu::g_instance.WaitAny(future, UINT64_MAX);
-    if (status == wgpu::WaitStatus::Success && *result) return std::move(*result);
-    Log.warn("Saved shader warmup failed; using normal pipeline creation");
+  if (complete) {
+    submit_pipeline_async(webgpu::g_device, descriptor, std::move(complete));
+    return {}; // Pending is owned by the queue, never installed as a ready pipeline.
   }
 #endif
   return webgpu::g_device.CreateRenderPipeline(descriptor);
 }
 
 void shutdown_pipeline_cache() {
+#ifdef __EMSCRIPTEN__
+  g_webPipelineCacheActive = false;
+  g_webPipelineQueue.cancel();
+  g_webPipelineFailure.clear();
+#endif
   if (g_hasPipelineThread) {
     g_pipelineThreadEnd = true;
     g_pipelineCv.notify_all();
@@ -758,79 +851,39 @@ void begin_pipeline_frame() {
   }
 }
 
-#ifdef __EMSCRIPTEN__
-// Drain every still-queued pipeline at the end of this frame. The plain
-// pipeline_worker caps at BuildPipelinesPerFrame; that cap makes sense
-// when a real worker thread continues compiling between frames, but on
-// emscripten that thread doesn't exist, so anything remaining queued
-// here stays queued indefinitely — find_pipeline returns a hash whose
-// get_pipeline() then fails, and every draw call using it is silently
-// dropped (visible as garbled / partially-missing menu text and
-// glyphs). Force-build everything; the alternative is permanently
-// broken rendering for the pipelines that didn't fit in the budget.
-static void drain_all_pending_pipelines_emscripten() {
-  while (true) {
-    PendingPipeline pending;
-    {
-      std::lock_guard lock{g_pipelineMutex};
-      if (g_priorityPipelines.empty() && g_backgroundPipelines.empty()) {
-        return;
-      }
-      auto& source = !g_priorityPipelines.empty() ? g_priorityPipelines : g_backgroundPipelines;
-      pending = std::move(source.front());
-      source.pop_front();
-    }
-    auto result = create_measured_pipeline(pending.create);
-    {
-      std::lock_guard lock{g_pipelineMutex};
-      g_pipelines.try_emplace(pending.hash, CachedPipeline{
-                                                .pipeline = std::move(result),
-                                                .firstFrameUsed = pending.firstFrameUsed,
-                                            });
-      g_pendingPipelines.erase(pending.hash);
-    }
-    ++createdPipelines;
-    --queuedPipelines;
-    ++diag::pipelines_drained_this_frame;
-    ++diag::total_pipelines_created;
-  }
-}
-#endif
-
 void end_pipeline_frame() {
   g_pipelineFrameActive = false;
-  if (!g_hasPipelineThread) {
-    pipeline_worker();
 #ifdef __EMSCRIPTEN__
-    // Worker stopped at BuildPipelinesPerFrame; force-drain the rest so
-    // no pipeline stays in g_pendingPipelines forever.
-    drain_all_pending_pipelines_emscripten();
+  finish_pipeline_compilation();
+#else
+  if (!g_hasPipelineThread) pipeline_worker();
 #endif
-  }
 #ifdef __EMSCRIPTEN__
-  // Periodic summary so we can see whether the drain is working —
-  // bind failures should drop to zero once the queue is empty and stay
-  // there for steady-state gameplay.
+  // Completion counts exclude queued/failed work. CPU submission time and
+  // complete-rendering waits are different measurements; neither is GPU time.
   if (++diag::frames_since_summary >= 60) {
     diag::frames_since_summary = 0;
     size_t pending_after = 0;
     {
       std::lock_guard lock{g_pipelineMutex};
-      pending_after = g_priorityPipelines.size() + g_backgroundPipelines.size();
+      pending_after = g_webPipelineQueue.pending();
     }
     if (diag::bind_failures_this_frame > 0 || diag::pipelines_created_this_frame > 0 ||
-        diag::pipelines_drained_this_frame > 0) {
-      Log.info("[PipelineDiag] this_period: built={} drained_at_eof={} bind_fails={}"
-               " | totals: built={} bind_fails={} | pending_now={} | compile_ms={:.1f} longest_compile_ms={:.1f}",
-               diag::pipelines_created_this_frame, diag::pipelines_drained_this_frame,
+        diag::submitted_pipelines > 0 || diag::failed_pipelines > 0) {
+      Log.info("[PipelineDiag] completed={} submitted={} failed={} bind_fails={}"
+               " | totals: built={} bind_fails={} | pending={} in_flight={}"
+               " | submit_cpu_ms={:.1f} longest_submit_ms={:.1f} protected_wait_ms={:.1f}",
+               diag::pipelines_created_this_frame, diag::submitted_pipelines, diag::failed_pipelines,
                diag::bind_failures_this_frame, diag::total_pipelines_created,
-               diag::total_bind_failures, pending_after, diag::compile_ms, diag::longest_compile_ms);
+               diag::total_bind_failures, pending_after, g_webPipelineQueue.in_flight(),
+               diag::compile_ms, diag::longest_compile_ms, diag::protected_wait_ms);
     }
     diag::pipelines_created_this_frame = 0;
-    diag::pipelines_drained_this_frame = 0;
     diag::bind_failures_this_frame = 0;
     diag::compile_ms = 0.0;
     diag::longest_compile_ms = 0.0;
+    diag::submitted_pipelines = diag::failed_pipelines = 0;
+    diag::protected_wait_ms = 0.0;
   }
 #endif
 }

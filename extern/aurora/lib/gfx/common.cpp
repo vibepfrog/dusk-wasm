@@ -249,7 +249,8 @@ void push_draw_command(clear::DrawData data) {
 
 template <>
 PipelineRef pipeline_ref(const clear::PipelineConfig& config) {
-  return find_pipeline(ShaderType::Clear, config, [=] { return create_pipeline(config); });
+  return find_pipeline(ShaderType::Clear, config,
+                       [=](PipelineCompletion done) { return create_pipeline(config, std::move(done)); });
 }
 
 void resolve_pass(TextureHandle texture, ClipRect rect, bool clearColor, bool clearAlpha, bool clearDepth,
@@ -458,7 +459,8 @@ void push_draw_command(gx::DrawData data) {
 
 template <>
 PipelineRef pipeline_ref(const gx::PipelineConfig& config) {
-  return find_pipeline(ShaderType::GX, config, [=] { return create_pipeline(config); });
+  return find_pipeline(ShaderType::GX, config,
+                       [=](PipelineCompletion done) { return create_pipeline(config, std::move(done)); });
 }
 
 void initialize() {
@@ -821,7 +823,9 @@ void end_frame(const wgpu::CommandEncoder& cmd) {
   for (auto& array : gx::g_gxState.arrays) {
     array.cachedRange = {};
   }
+#ifndef __EMSCRIPTEN__
   end_pipeline_frame();
+#endif
   ++g_frameIndex;
 }
 
