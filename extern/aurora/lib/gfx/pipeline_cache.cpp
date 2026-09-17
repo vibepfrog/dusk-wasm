@@ -7,6 +7,7 @@
 #include "../gx/pipeline.hpp"
 #include "../sqlite_utils.hpp"
 #include "../webgpu/gpu.hpp"
+#include "../window.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -105,6 +106,7 @@ using WebPipelineQueue = AsyncPipelineQueue<PipelineRef, wgpu::RenderPipeline>;
 static WebPipelineQueue g_webPipelineQueue{2};
 static bool g_webPipelineCacheActive = false;
 static std::string g_webPipelineFailure;
+static bool g_asyncShaderCompilationRequested = true;
 #endif
 
 static sqlite3* g_pipelineCacheDb = nullptr;
@@ -692,11 +694,18 @@ PipelineRef find_pipeline(ShaderType type, const gx::PipelineConfig& config, New
 }
 
 #ifdef __EMSCRIPTEN__
+static void require_pipeline_success();
+
+void set_async_shader_compilation(bool enabled) {
+  g_asyncShaderCompilationRequested = enabled;
+}
+
 void service_pipeline_compilation(size_t maxSubmissions) {
   if (!g_webPipelineCacheActive) return;
   // Always pump, even with zero submission budget or no new cache lookups.
   // Never hold g_pipelineMutex while invoking the browser or user callbacks.
   if (webgpu::g_instance) webgpu::g_instance.ProcessEvents();
+  require_pipeline_success();
   if (!g_webPipelineQueue.active()) return;
   if (g_webPipelineFailure.empty()) {
     const double start = emscripten_get_now();
@@ -706,6 +715,7 @@ void service_pipeline_compilation(size_t maxSubmissions) {
       diag::compile_ms += elapsed; // CPU preparation/submission, not GPU latency.
       diag::longest_compile_ms = std::max(diag::longest_compile_ms, elapsed);
       diag::submitted_pipelines += submitted;
+      g_stats.submittedPipelines += submitted;
     }
   }
   for (auto& job : g_webPipelineQueue.take_completed()) {
@@ -721,12 +731,15 @@ void service_pipeline_compilation(size_t maxSubmissions) {
       ++diag::total_pipelines_created;
     } else {
       ++diag::failed_pipelines;
+      ++g_stats.failedPipelines;
       if (g_webPipelineFailure.empty()) {
         g_webPipelineFailure = fmt::format("Pipeline {} failed: {}", job->key, job->error);
         Log.error("{}", g_webPipelineFailure);
       }
     }
   }
+  g_stats.inFlightPipelines = g_webPipelineQueue.in_flight();
+  require_pipeline_success(); // Fail visibly even during hidden/paused updates.
 }
 
 void cancel_pipeline_compilation(std::string reason) {
@@ -734,15 +747,15 @@ void cancel_pipeline_compilation(std::string reason) {
   g_webPipelineFailure = std::move(reason);
   g_webPipelineQueue.cancel();
   queuedPipelines = 0;
+  g_stats.inFlightPipelines = 0;
 }
 
 static void require_pipeline_success() {
   if (!g_webPipelineFailure.empty()) Log.fatal("{}", g_webPipelineFailure);
 }
 
-// Milestone 1 keeps EVERY draw and capture complete. This is an explicit
-// readiness barrier before command encoding/surface acquisition, not part of
-// ordinary queue service. JSPI yields the worker so promises and input proceed.
+// Complete-frame fallback and OFF mode. Existing jobs are drained, never reset
+// or duplicated. All waits precede encoding and surface acquisition.
 static void finish_pipeline_compilation() {
   const double start = emscripten_get_now();
   const bool waited = g_webPipelineQueue.pending() != 0;
@@ -752,7 +765,11 @@ static void finish_pipeline_compilation() {
     if (!g_webPipelineQueue.pending()) break;
     emscripten_sleep(0);
   } while (true);
-  if (waited) diag::protected_wait_ms += emscripten_get_now() - start;
+  if (waited) {
+    const double elapsed = emscripten_get_now() - start;
+    diag::protected_wait_ms += elapsed;
+    g_stats.pipelineWaitMs += elapsed;
+  }
 }
 
 void protect_pipeline_outputs(const PipelineDependencies<PipelineRef>::Plan& plan) {
@@ -787,7 +804,12 @@ void protect_pipeline_outputs(const PipelineDependencies<PipelineRef>::Plan& pla
       emscripten_sleep(0);
     } while (true);
   }
-  if (missing || plan.forceCompleteFrame) diag::dependency_wait_ms += emscripten_get_now() - start;
+  if (missing || plan.forceCompleteFrame) {
+    const double elapsed = emscripten_get_now() - start;
+    diag::dependency_wait_ms += elapsed;
+    // Complete-frame fallback already accounts for its wait above.
+    if (!plan.forceCompleteFrame) g_stats.pipelineWaitMs += elapsed;
+  }
 }
 #endif
 
@@ -812,6 +834,10 @@ void initialize_pipeline_cache() {
   g_pipelines.clear();
   queuedPipelines = 0;
   createdPipelines = 0;
+  g_stats.submittedPipelines = g_stats.failedPipelines = g_stats.inFlightPipelines = 0;
+  g_stats.skippedPipelineDraws = g_stats.skippedPipelineFrames = 0;
+  g_stats.pipelineWaitMs = 0;
+  g_stats.asyncShaderCompilation = g_asyncShaderCompilationRequested;
   diag::total_bind_failures = diag::total_pipelines_created = 0;
   diag::bind_failures_this_frame = diag::pipelines_created_this_frame = 0;
   diag::submitted_pipelines = diag::failed_pipelines = 0;
@@ -886,6 +912,9 @@ void shutdown_pipeline_cache() {
 }
 
 void begin_pipeline_frame() {
+#ifdef __EMSCRIPTEN__
+  g_stats.asyncShaderCompilation = g_asyncShaderCompilationRequested;
+#endif
   g_pipelineFrameActive = true;
   if (!g_hasPipelineThread) {
     g_pipelinesPerFrame = 0;
@@ -895,7 +924,13 @@ void begin_pipeline_frame() {
 void end_pipeline_frame() {
   g_pipelineFrameActive = false;
 #ifdef __EMSCRIPTEN__
-  finish_pipeline_compilation();
+  if (g_stats.asyncShaderCompilation) {
+    // At most one ordinary submission per rendered frame, with two in flight.
+    // Protected waits may fill both slots. Hidden updates only publish results.
+    service_pipeline_compilation(window::is_paused() ? 0 : 1);
+  } else {
+    finish_pipeline_compilation();
+  }
 #else
   if (!g_hasPipelineThread) pipeline_worker();
 #endif

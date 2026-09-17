@@ -118,6 +118,7 @@ static uint32_t g_frameIndex = UINT32_MAX;
 static PipelineRef g_currentPipeline;
 #ifdef __EMSCRIPTEN__
 static bool g_currentDrawRequired = true;
+static bool g_frameSkippedDraw = false;
 static bool g_currentPassComplete = true;
 #endif
 wgpu::BindGroupLayout g_staticBindGroupLayout;
@@ -767,6 +768,11 @@ bool begin_frame() {
     mapBuffer(g_textureUpload, TextureUploadSize);
   }
 
+#ifdef __EMSCRIPTEN__
+  g_frameSkippedDraw = false;
+  gx::g_gxState.asyncWorldDraws = false;
+  gx::g_gxState.stateDirty = true;
+#endif
   g_stats.drawCallCount = 0;
   g_stats.mergedDrawCallCount = 0;
   g_suspendedEfbPass.reset();
@@ -889,7 +895,9 @@ void prepare_pipeline_dependencies() {
       case CommandType::Draw:
         switch (command.data.draw.type) {
         case ShaderType::Clear: pass.draws.push_back({command.data.draw.clear.pipeline, true}); break;
-        case ShaderType::GX: pass.draws.push_back({command.data.draw.gx.pipeline, false}); break;
+        case ShaderType::GX:
+          pass.draws.push_back({command.data.draw.gx.pipeline, !command.data.draw.gx.asyncEligible});
+          break;
         default: pass.unknown = true; break;
         }
         break;
@@ -1081,7 +1089,8 @@ void render_pass(const wgpu::RenderPassEncoder& pass, u32 idx) {
     case CommandType::Draw: {
       const auto& draw = cmd.data.draw;
 #ifdef __EMSCRIPTEN__
-      g_currentDrawRequired = g_renderPasses[idx].requiresComplete || draw.type == ShaderType::Clear;
+      g_currentDrawRequired = !g_stats.asyncShaderCompilation || g_renderPasses[idx].requiresComplete ||
+                              draw.type != ShaderType::GX || !draw.gx.asyncEligible;
 #endif
       switch (draw.type) {
       case ShaderType::Clear:
@@ -1116,6 +1125,11 @@ bool bind_pipeline(PipelineRef ref, const wgpu::RenderPassEncoder& pass) {
 #ifdef __EMSCRIPTEN__
     g_currentPassComplete = false;
     ASSERT(!g_currentDrawRequired, "Protected pipeline {} was unavailable during replay", ref);
+    ++g_stats.skippedPipelineDraws;
+    if (!g_frameSkippedDraw) {
+      ++g_stats.skippedPipelineFrames;
+      g_frameSkippedDraw = true;
+    }
 #endif
     return false;
   }
@@ -1257,3 +1271,10 @@ void pop_debug_group() {
 }
 
 const AuroraStats* aurora_get_stats() { return &aurora::gfx::g_stats; }
+void aurora_set_async_shader_compilation(bool enabled) {
+#ifdef __EMSCRIPTEN__
+  aurora::gfx::set_async_shader_compilation(enabled);
+#else
+  (void)enabled;
+#endif
+}

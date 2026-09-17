@@ -14,6 +14,7 @@ struct DrawData {
   uint32_t instanceCount;
   GXBindGroups bindGroups;
   uint32_t dstAlpha;
+  bool asyncEligible = false;
 };
 
 constexpr uint32_t GXPipelineConfigVersion = 11;

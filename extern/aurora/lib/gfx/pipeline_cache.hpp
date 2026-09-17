@@ -28,7 +28,8 @@ void end_pipeline_frame();
 wgpu::RenderPipeline create_render_pipeline(const wgpu::RenderPipelineDescriptor* descriptor,
                                            PipelineCompletion complete = {});
 #ifdef __EMSCRIPTEN__
-void service_pipeline_compilation(size_t maxSubmissions = 1);
+void service_pipeline_compilation(size_t maxSubmissions = 0);
+void set_async_shader_compilation(bool enabled);
 void cancel_pipeline_compilation(std::string reason);
 void protect_pipeline_outputs(const PipelineDependencies<PipelineRef>::Plan& plan);
 #endif

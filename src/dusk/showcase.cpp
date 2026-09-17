@@ -47,9 +47,10 @@ bool benchmarking = false, touring = false, running = false;
 int sceneIndex = 0, pass = 0;
 double lastFrame = 0, elapsed = 0, readySince = 0, lastStatus = 0;
 uint32_t initialPipelines = 0, passPipelines = 0;
+AuroraStats initialShaderStats{}, passShaderStats{};
 cXyz anchor;
 std::vector<double> samples;
-using PresentationKey = std::array<int, 9>;
+using PresentationKey = std::array<int, 10>;
 PresentationKey measuredPresentation{};
 
 PresentationKey presentation_key() {
@@ -60,7 +61,8 @@ PresentationKey presentation_key() {
             settings.game.shadowResolutionMultiplier.getValue(),
             static_cast<int>(settings.game.bloomMode.getValue()),
             settings.game.enableFrameInterpolation.getValue(), settings.video.enableVsync.getValue(),
-            settings.game.enableMirrorMode.getValue(), getTransientSettings().skipFrameRateLimit};
+            settings.game.enableMirrorMode.getValue(), getTransientSettings().skipFrameRateLimit,
+            settings.game.enableAsyncShaderCompilation.getValue()};
 }
 
 void status(const char* text) {
@@ -75,14 +77,16 @@ void set_stage() {
     waiting = true;
     running = false;
     readySince = lastFrame = 0;
-    initialPipelines = aurora_get_stats()->createdPipelines;
+    initialShaderStats = *aurora_get_stats();
+    initialPipelines = initialShaderStats.createdPipelines;
     dComIfGp_offEnableNextStage();
     dComIfGp_setNextStage(scene.stage, scene.spawn, scene.room, scene.layer);
     status("Loading showcase location…");
 }
 
 void result() {
-    const uint32_t compiled = aurora_get_stats()->createdPipelines - passPipelines;
+    const auto stats = *aurora_get_stats();
+    const uint32_t compiled = stats.createdPipelines - passPipelines;
     MAIN_THREAD_EM_ASM({
         if (window.duskShowcaseUI) window.duskShowcaseUI.result({
             scene: $0, pass: $1,
@@ -90,7 +94,11 @@ void result() {
             compiled: $4, entryCompiled: $5,
             resolutionScale: $6, interpolation: !!$7, vsync: !!$8,
             bloom: $9, shadowScale: $10, renderWidth: $11, renderHeight: $12,
-            mirror: !!$13
+            mirror: !!$13,
+            asyncShaders: { enabled: !!$14, submitted: $15, failed: $16,
+                pendingStart: $17, pendingEnd: $18, inFlightEnd: $19,
+                skippedDraws: $20, skippedFrames: $21, protectedWaitMs: $22,
+                entrySkippedDraws: $23, entryProtectedWaitMs: $24 }
         });
     }, sceneIndex, pass, samples.data(), samples.size(), compiled,
        passPipelines - initialPipelines,
@@ -99,7 +107,15 @@ void result() {
        getSettings().video.enableVsync.getValue(),
        static_cast<int>(getSettings().game.bloomMode.getValue()),
        getSettings().game.shadowResolutionMultiplier.getValue(), measuredPresentation[0],
-       measuredPresentation[1], getSettings().game.enableMirrorMode.getValue());
+       measuredPresentation[1], getSettings().game.enableMirrorMode.getValue(),
+       stats.asyncShaderCompilation, stats.submittedPipelines - passShaderStats.submittedPipelines,
+       stats.failedPipelines - passShaderStats.failedPipelines,
+       passShaderStats.queuedPipelines, stats.queuedPipelines, stats.inFlightPipelines,
+       static_cast<double>(stats.skippedPipelineDraws - passShaderStats.skippedPipelineDraws),
+       static_cast<double>(stats.skippedPipelineFrames - passShaderStats.skippedPipelineFrames),
+       stats.pipelineWaitMs - passShaderStats.pipelineWaitMs,
+       static_cast<double>(passShaderStats.skippedPipelineDraws - initialShaderStats.skippedPipelineDraws),
+       passShaderStats.pipelineWaitMs - initialShaderStats.pipelineWaitMs);
 }
 
 bool scene_ready() {
@@ -274,9 +290,10 @@ void update() {
         elapsed = 0;
         lastFrame = 0;
         samples.clear();
-        passPipelines = aurora_get_stats()->createdPipelines;
+        passShaderStats = *aurora_get_stats();
+        passPipelines = passShaderStats.createdPipelines;
         running = true;
-        status(pass == 0 ? "First pass: 20-second camera sweep…" : "Repeat: the same camera sweep with prepared shaders…");
+        status(pass == 0 ? "First pass: 20-second camera sweep…" : "Repeat: the same camera sweep; shader readiness is recorded…");
     }
 }
 

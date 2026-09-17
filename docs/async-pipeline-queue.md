@@ -1,11 +1,15 @@
-# Asynchronous pipelines: queue and output protection
+# Asynchronous pipelines: queue, output protection and selective drawing
 
 Milestone 1 passed the full WASM build and all 64 tests in
 [CI run 35201713703](https://github.com/vibepfrog/dusk-wasm/actions/runs/35201713703).
-Milestone 2 adds output protection; its 66 local tests pass and integration CI is pending.
+Milestone 2 passed all 66 tests and the full WASM build in
+[CI run 35230401672](https://github.com/vibepfrog/dusk-wasm/actions/runs/35230401672).
+Milestone 3 enables selective drawing and adds the browser setting; all 69 local
+tests pass. Its full integration CI is pending at this source checkpoint.
 Development branch: `async-pipeline-queue`, draft PR #2.
-Both stages preserve complete rendering. This does not enable draw skipping or add
-the public asynchronous-compilation setting.
+The first two stages preserved complete rendering. Milestone 3 enables the
+default-ON browser setting described below; this branch remains isolated from
+the live site until real-game release QA.
 
 ## Why this stage exists
 
@@ -18,9 +22,9 @@ compilation safely.
 The new queue separates requests, GPU submission, completion and cache publication.
 Successful compilation is published under the original pipeline key even when no
 subsequent draw asks for that key. A callback does **not** regenerate pixels from
-an earlier frame. For this milestone every draw, EFB copy, depth readback and
-one-time producer still waits for its required pipelines before encoding. Later
-work must classify/protect output dependencies before allowing any skipped draws.
+an earlier frame. EFB copies, depth readbacks and one-time producers wait for their required
+pipelines before encoding. Milestone 3 permits missing final-pass world draws
+to disappear temporarily; it never publishes incomplete persistent outputs.
 
 ## Ownership and service contract
 
@@ -30,8 +34,8 @@ work must classify/protect output dependencies before allowing any skipped draws
 - Duplicate keys share one job, including failures. Priority requests promote
   queued background work; after eight priority submissions an older background
   job gets a turn. First-use frame metadata remains the minimum seen.
-- At most **two** jobs compile concurrently. Ordinary update service starts at
-  most **one** job per call. Protected warmup/frame waits may fill both slots.
+- At most **two** jobs compile concurrently. Ordinary end-frame service starts at
+  most **one** job per rendered frame; paused/hidden updates only publish results. Protected warmup/frame waits may fill both slots.
   These are conservative initial constants, not measured optimal values. They
   bound submissions and concurrency, not total queue size or one call's CPU time.
   WGSL generation and shader-module creation can still take synchronous CPU time.
@@ -94,23 +98,26 @@ upgrade; rerun the bridge fixture.
 - `.github/workflows/web.yml` runs both fixtures and builds the complete production
   WASM target on pull requests. PR events skip the deploy job. Do not manually
   dispatch this workflow on the feature branch: non-PR events currently deploy.
-- Local suite: **64/64 passed**. Local LeakSanitizer requires
+- Current local suite: **69/69 passed**. Local LeakSanitizer requires
   `ASAN_OPTIONS=detect_leaks=0` because the sandbox cannot inspect `/proc`; ASan and
   UBSan remain enabled. CI uses its normal sanitizer defaults.
 - Real cold/warm-cache gameplay, repeated showcase entry, pause/hidden-tab behavior
   under actual GPU compilation, GPU-driver errors, and native full-game runtime
   are not yet verified. No valid game disc/save is available in this workspace.
   Existing browser suspension, storage, controls and showcase regression tests
-  pass. No FPS/startup improvement is claimed for this complete-rendering stage.
+  pass. No FPS/startup improvement is claimed without actual GPU/game measurements.
 
 ## Resume checklist
 
-1. Finish milestone 2 integration CI and record the result in the PR/recovery notes.
-2. Keep the feature isolated until reviewed/tested with an actual game session.
-3. Next milestone: selectively allow disposable draws to skip and add the default-ON
-   persisted setting. A completed shader cannot repair a skipped old capture.
+1. Finish milestone 3 integration CI and record its exact head/run in recovery notes.
+2. Before release, run cold/warm-cache ON/OFF showcase comparisons on an actual GPU.
+   Inspect skipped counts and protected waits as well as FPS. No valid disc/save
+   is available here, so CI cannot establish game appearance or driver performance.
+3. Check HUD/items/text/fades, one-time map/photos, shadow/water/bloom copies, scene
+   changes, save/load, rapid toggling while jobs are pending, and tab suspend/resume.
 4. Preserve the deployed Faron fix (`14fd31c47667e08f239e72c6320a60fcdcd28d06`), input
    defaults, save isolation and existing tab-resume handling. No Cloudflare work.
+5. Keep PR #2 draft until this QA is complete. Do not deploy via workflow_dispatch.
 
 ## Milestone 2: persistent output protection
 
@@ -137,7 +144,8 @@ and it becomes protected when a depth snapshot is already requested. EFB content
 are cleared at the start of each recorded frame. This proof does not extend to a
 future renderer that deliberately loads previous-frame attachments: such a change
 must track cross-frame completeness rather than assume the fallback can repair old
-pixels. Existing full-frame readiness remains active throughout this milestone.
+pixels. Full-frame readiness remained active throughout milestone 2. In milestone 3 it
+remains the OFF/unknown-output fallback; protected output waits are always active.
 
 `protect_pipeline_outputs` promotes existing required jobs ahead of ordinary and
 background work, preserving the two-in-flight limit, and cooperatively waits for
@@ -155,9 +163,8 @@ on a later frame, avoiding stale scene/resource writes.
 category, conservative fallback frames and dependency-wait time. Eligibility is
 potential eligibility, not evidence that any draw was skipped or an FPS gain.
 Twilight Princess makes frequent EFB copies: real-game measurements may show that
-most expensive misses remain protected. GX HUD/text/fade quality still needs a
-targeted audit before enabling the later skip policy; native ImGui settings and
-copy/clear infrastructure are outside that policy.
+most expensive misses remain protected. The milestone 3 GX HUD/text/fade audit and explicit world marker are described
+below; native ImGui settings and copy/clear infrastructure are outside that policy.
 
 Tests in `pipeline_dependencies_test.cpp` exercise the actual classifier and queue:
 retroactive consumer discovery, color/depth load ancestry, clear boundaries,
@@ -166,3 +173,67 @@ one-time completion after 200 service calls. `web/pipeline_dependencies.test.mjs
 also compiles the actual request-consumption prefix of `encode_frame_snapshot`
 with a controlled clock to verify late requests survive an incomplete producer
 and throttling. This checks the production gate, not a physical GPU capture.
+
+## Milestone 3: selective drawing, setting and benchmark accounting
+
+`game.enableAsyncShaderCompilation` defaults ON in browser builds and is registered
+with the existing ConfigVar store. Settings > Graphics > Rendering exposes the
+browser-only option. Existing explicit OFF preferences survive reload. Both the
+launcher loop and game loop pass the setting to Aurora before `begin_frame`.
+Aurora latches it for the whole frame: a mid-frame change takes effect on the next
+frame. OFF drains the original jobs with the existing cooperative wait; it does
+not reset the queue, clear ready pipelines or compile a duplicate synchronous job.
+Native renderer worker/skip behavior remains unchanged.
+
+Only GX draws explicitly marked as world work, using perspective, a non-ALWAYS
+depth test and color writes, are candidates. `GXSetAsyncWorldDraws` emits Aurora
+FIFO subcommand 0x0003 with a one-byte payload. `mDoGph_Painter` opens the scope at
+world-camera setup and closes it before the mirror/UI section. Frame recording
+starts with the marker false. Decoder changes dirty GX state, preventing draw
+merging across world/UI scope boundaries. `DrawData.asyncEligible` is frame command
+metadata; it is not part of PipelineConfig or the persisted recipe hash/schema.
+Preflight and replay use the same eligibility flag. All existing pass protections
+override it. Missing eligible draws return before binding/drawing; no placeholder
+shader is created. Completion publishes the actual pipeline under its original key.
+
+Audit evidence in this checkout:
+
+- `libs/JSystem/src/J2DGraph/J2DOrthoGraph.cpp::setPort` installs orthographic
+  projection. J2D HUD and text therefore stay required.
+- `src/m_Do/m_Do_graphic.cpp::drawItem3D` uses perspective menu/item models. These
+  are outside the explicit world scope, even if their depth test resembles a world
+  model. Projection alone was rejected as an eligibility rule.
+- `src/d/d_ovlp_fade2.cpp` and `d_ovlp_fade3.cpp` use perspective textured transition
+  quads with depth testing disabled. Those draws stay required. Fade snapshots
+  (`dDlst_snapShot_c::draw`) use GXCopyTex and therefore protect the producer too.
+- Orthographic filter passes, depthless effects, clears, offscreen models and all
+  copies stay complete. This sacrifices coverage to avoid corrupting durable pixels.
+
+`aurora::update` pumps completions with zero submission budget even while hidden.
+End-frame starts at most one ordinary job when presentable/unpaused, still capped
+at two in flight. Protected waits/startup can fill both slots. Required output
+waits can continue while retiring a frame hidden mid-recording; no surface is held.
+Shader submission includes synchronous CPU work (WGSL/module construction), so
+this is not a guarantee against all frame-time spikes. Service reports failed
+pipelines/device loss explicitly even while hidden, rather than silently leaving
+objects absent. GPU/device recovery is still outside scope.
+
+AuroraStats adds cumulative submitted/failed counts, skipped draws/frames, protected
+wait milliseconds and an in-flight gauge. Existing created/queued stats retain
+their meanings. Showcase report schema v2 includes mode, pending start/end,
+submissions vs completions, in-flight end, skips, waits and entry skips/waits.
+Changes to the async setting invalidate a running benchmark. Results visibly flag
+incomplete rendering and exported `completeRendering` never equates queued shaders
+with completed work. The repeat sweep is no longer unconditionally called prepared.
+
+`web/pipeline_runtime.test.mjs` compiles actual production service, frame policy,
+protection and bind functions with controlled GPU/clock dependencies under native
+ASan/UBSan. It checks single-use publication after 200 update pumps, bound-result
+replacement, accurate skipped draw/frame counts, frame-boundary mode latching,
+OFF draining existing jobs, protected UI promotion, hidden publication without new
+ordinary work, and explicit failure without retries. A second fixture exercises
+the production FIFO encoder/payload decoder and eligibility expression, including
+scope ordering, dirty-state merge boundaries, perspective UI, fades, orthographic
+work and truncated payloads. Existing dependency/late-readback tests remain active.
+These controlled fixtures are not a substitute for actual GPU shader validation
+or visual gameplay QA. Full WASM CI additionally exercises the pinned WebGPU bridge.

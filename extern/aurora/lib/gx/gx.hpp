@@ -293,6 +293,7 @@ struct GXState {
   u32 currentPnMtx;
   Mat4x4<float> proj;
   GXProjectionType projType; // for GXGetProjectionv
+  bool asyncWorldDraws = false;
   FogState fog;
   GXCullMode cullMode = GX_CULL_BACK;
   u8 lineWidth = 0;

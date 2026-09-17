@@ -373,7 +373,8 @@ const AuroraEvent* update() noexcept {
 #if defined(__EMSCRIPTEN__) && defined(AURORA_ENABLE_GX)
   // This update also runs when drawing is paused/hidden. Completion cannot
   // depend on a new draw or another lookup of the shader that requested it.
-  gfx::service_pipeline_compilation();
+  // Publish while hidden too, but submit ordinary work only at frame end.
+  gfx::service_pipeline_compilation(0);
 #endif
   return events;
 }

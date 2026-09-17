@@ -2,6 +2,7 @@
 #define DOLPHIN_GXAURORA_H
 
 #include <dolphin/types.h>
+#include <dolphin/gx/GXEnum.h>
 
 #if __cplusplus
 extern "C" {
@@ -22,6 +23,11 @@ extern "C" {
  * Must be followed by four u32 values: left, top, width, height.
  */
 #define GX_LOAD_AURORA_SCISSOR_RENDER 0x0002
+
+// Followed by one u8. Explicit world-draw eligibility, in FIFO order.
+#define GX_LOAD_AURORA_ASYNC_WORLD 0x0003
+// This is only a candidate marker. Output dependencies can still require it.
+void GXSetAsyncWorldDraws(GXBool enabled);
 
 /**
  * Aurora equivalent of CP_REG_ARRAYBASE_ID: sets the base address and size of a vertex array.
