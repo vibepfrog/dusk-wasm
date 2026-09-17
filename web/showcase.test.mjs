@@ -61,3 +61,16 @@ test('showcase launch is opt-in and protects saves before main starts', () => {
     ui.finished();
     assert.equal(node('showcase-campaign').disabled, true);
 });
+
+test('benchmark flags incomplete rendering and does not equate pending jobs with completed shaders', () => {
+    const { shaderSummary } = metricsContext.DuskShowcaseMetrics;
+    const data = { asyncShaders: { enabled: true, skippedDraws: 4, skippedFrames: 2,
+        failed: 0, pendingEnd: 3 } };
+    assert.equal(shaderSummary(data).completeRendering, false);
+    assert.match(shaderSummary(data).text, /4 draws skipped \/ 2 frames.*3 pending.*incomplete rendering/);
+    data.asyncShaders.skippedDraws = data.asyncShaders.skippedFrames = 0;
+    assert.equal(shaderSummary(data).completeRendering, true, 'pending unused shaders need not imply missing pixels');
+    data.asyncShaders.failed = 1;
+    assert.equal(shaderSummary(data).completeRendering, false);
+    assert.equal(shaderSummary({}).completeRendering, null, 'old reports cannot imply verified completeness');
+});

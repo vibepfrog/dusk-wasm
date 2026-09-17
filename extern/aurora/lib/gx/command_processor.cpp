@@ -1647,6 +1647,10 @@ static void handle_draw_unmerged(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, g
       .instanceCount = instanceCount,
       .bindGroups = bindGroups,
       .dstAlpha = g_gxState.dstAlpha,
+      // UI can use perspective (item models and fades); never infer world
+      // ownership from projection alone. Orthographic/depthless work stays full.
+      .asyncEligible = g_gxState.asyncWorldDraws && g_gxState.projType == GX_PERSPECTIVE &&
+                       config.depthCompare && config.depthFunc != GX_ALWAYS && config.colorUpdate,
   });
 }
 
@@ -1668,7 +1672,13 @@ void handle_aurora(const u8* data, u32& pos, u32 size, bool bigEndian) {
   pos += 2;
 
   // Setting of vertex array bases.
-  if (subCmd == GX_LOAD_AURORA_VIEWPORT_RENDER) {
+  if (subCmd == GX_LOAD_AURORA_ASYNC_WORLD) {
+    CHECK(pos + 1 <= size, "GX_LOAD_AURORA_ASYNC_WORLD read overrun");
+    g_gxState.asyncWorldDraws = data[pos++] == 1;
+    // Prevent merging a protected UI draw into a preceding world draw, even
+    // when both otherwise use identical GX state and the same pipeline key.
+    g_gxState.stateDirty = true;
+  } else if (subCmd == GX_LOAD_AURORA_VIEWPORT_RENDER) {
     CHECK(pos + 24 <= size, "GX_LOAD_AURORA_VIEWPORT_RENDER read overrun");
     const f32 left = read_f32(data + pos, bigEndian);
     pos += 4;

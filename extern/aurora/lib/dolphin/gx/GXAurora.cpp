@@ -21,6 +21,11 @@ static void GXWriteString(const char* label) {
   GX_WRITE_DATA(label, length);
 }
 
+void GXSetAsyncWorldDraws(GXBool enabled) {
+  GX_WRITE_AURORA(GX_LOAD_AURORA_ASYNC_WORLD);
+  GX_WRITE_U8(enabled);
+}
+
 void GXPushDebugGroup(const char* label) {
   GX_WRITE_AURORA(GX_LOAD_AURORA_DEBUG_GROUP_PUSH);
   GXWriteString(label);

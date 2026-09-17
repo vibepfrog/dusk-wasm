@@ -22,6 +22,6 @@ struct PipelineConfig {
 };
 static_assert(std::has_unique_object_representations_v<PipelineConfig>);
 
-wgpu::RenderPipeline create_pipeline(const PipelineConfig& config);
+wgpu::RenderPipeline create_pipeline(const PipelineConfig& config, PipelineCompletion complete = {});
 void render(const DrawData& data, const wgpu::RenderPassEncoder& pass, const wgpu::Extent3D& targetSize);
 } // namespace aurora::gfx::clear

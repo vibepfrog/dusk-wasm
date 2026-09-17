@@ -2200,6 +2200,9 @@ int mDoGph_Painter() {
             captureScreenPerspDrawInfo(draw_info);
             #endif
 
+#ifdef __EMSCRIPTEN__
+            GXSetAsyncWorldDraws(GX_TRUE);
+#endif
             dComIfGp_setCurrentWindow(window_p);
             dComIfGp_setCurrentView(&camera_p->view);
             dComIfGp_setCurrentViewport(view_port);
@@ -2580,6 +2583,9 @@ int mDoGph_Painter() {
     fapGm_HIO_c::startCpuTimer();
     #endif
 
+#ifdef __EMSCRIPTEN__
+    GXSetAsyncWorldDraws(GX_FALSE);
+#endif
     #if TARGET_PC
     if (dusk::getSettings().game.enableMirrorMode)
     #elif PLATFORM_WII

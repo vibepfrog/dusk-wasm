@@ -2,6 +2,7 @@
 
 #include "../internal.hpp"
 #include "../webgpu/gpu.hpp"
+#include "pipeline_async.hpp"
 
 #include <cstdint>
 #include <cstdlib>
@@ -224,6 +225,9 @@ void shutdown();
 
 bool begin_frame();
 void end_frame(const wgpu::CommandEncoder& cmd);
+#ifdef __EMSCRIPTEN__
+void prepare_pipeline_dependencies();
+#endif
 uint32_t current_frame() noexcept;
 void render(wgpu::CommandEncoder& cmd);
 void render_pass(const wgpu::RenderPassEncoder& pass, uint32_t idx);

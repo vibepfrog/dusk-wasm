@@ -12,6 +12,9 @@
 #include <webgpu/webgpu_cpp.h>
 
 #include "../gfx/common.hpp"
+#ifdef __EMSCRIPTEN__
+#include "../gfx/pipeline_cache.hpp"
+#endif
 #include "../internal.hpp"
 #include "../window.hpp"
 
@@ -585,6 +588,13 @@ bool initialize(AuroraBackend auroraBackend) {
                                               wgpu::StringView message) {
                                              Log.error("[FATAL] Device lost reason={} message={}",
                                                        underlying(reason), message);
+#ifdef __EMSCRIPTEN__
+                                             // A retired device must not cancel a replacement's jobs.
+                                             if (device.Get() == g_device.Get()) {
+                                               gfx::cancel_pipeline_compilation(
+                                                   "WebGPU device lost: " + std::string(std::string_view(message)));
+                                             }
+#endif
                                            });
     const auto future =
         g_adapter.RequestDevice(&deviceDescriptor, wgpu::CallbackMode::WaitAnyOnly,

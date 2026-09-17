@@ -571,7 +571,7 @@ static inline wgpu::PrimitiveState to_primitive_state(GXCullMode gx_cullMode) {
 }
 
 wgpu::RenderPipeline build_pipeline(const PipelineConfig& config, ArrayRef<wgpu::VertexBufferLayout> vtxBuffers,
-                                    wgpu::ShaderModule shader, const char* label) noexcept {
+                                    wgpu::ShaderModule shader, const char* label, gfx::PipelineCompletion complete) {
   ZoneScoped;
   const wgpu::DepthStencilState depthStencil{
       .format = g_graphicsConfig.depthFormat,
@@ -609,7 +609,7 @@ wgpu::RenderPipeline build_pipeline(const PipelineConfig& config, ArrayRef<wgpu:
           },
       .fragment = &fragmentState,
   };
-  return gfx::create_render_pipeline(&descriptor);
+  return gfx::create_render_pipeline(&descriptor, std::move(complete));
 }
 
 u8 comp_type_size(GXAttr attr, GXCompType type) noexcept {

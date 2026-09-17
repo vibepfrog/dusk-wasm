@@ -116,6 +116,11 @@ static std::atomic s_mappingState{BufferMapState::Unmapped};
 static wgpu::Limits g_cachedLimits;
 static uint32_t g_frameIndex = UINT32_MAX;
 static PipelineRef g_currentPipeline;
+#ifdef __EMSCRIPTEN__
+static bool g_currentDrawRequired = true;
+static bool g_frameSkippedDraw = false;
+static bool g_currentPassComplete = true;
+#endif
 wgpu::BindGroupLayout g_staticBindGroupLayout;
 wgpu::BindGroup g_staticBindGroup;
 wgpu::BindGroupLayout g_uniformBindGroupLayout;
@@ -144,6 +149,8 @@ struct RenderPass {
   CommandList commands;
   bool clearColor = true;
   bool clearDepth = true;
+  bool offscreen = false;
+  bool requiresComplete = true;
   std::vector<tex_palette_conv::ConvRequest> paletteConvs;
 };
 static std::vector<RenderPass> g_renderPasses;
@@ -249,7 +256,8 @@ void push_draw_command(clear::DrawData data) {
 
 template <>
 PipelineRef pipeline_ref(const clear::PipelineConfig& config) {
-  return find_pipeline(ShaderType::Clear, config, [=] { return create_pipeline(config); });
+  return find_pipeline(ShaderType::Clear, config,
+                       [=](PipelineCompletion done) { return create_pipeline(config, std::move(done)); });
 }
 
 void resolve_pass(TextureHandle texture, ClipRect rect, bool clearColor, bool clearAlpha, bool clearDepth,
@@ -285,6 +293,7 @@ void resolve_pass(TextureHandle texture, ClipRect rect, bool clearColor, bool cl
       .clearDepthValue = clearDepthValue,
       .clearColor = clearColor && clearAlpha,
       .clearDepth = clearDepth,
+      .offscreen = prevPass.offscreen,
   };
   g_renderPasses.emplace_back(std::move(newPass));
   ++g_currentRenderPass;
@@ -413,6 +422,7 @@ void begin_offscreen(uint32_t width, uint32_t height) {
       .clearDepthValue = gx::UseReversedZ ? 0.f : 1.f,
       .clearColor = true,
       .clearDepth = true,
+      .offscreen = true,
   };
   g_renderPasses.emplace_back(std::move(newPass));
   ++g_currentRenderPass;
@@ -458,7 +468,8 @@ void push_draw_command(gx::DrawData data) {
 
 template <>
 PipelineRef pipeline_ref(const gx::PipelineConfig& config) {
-  return find_pipeline(ShaderType::GX, config, [=] { return create_pipeline(config); });
+  return find_pipeline(ShaderType::GX, config,
+                       [=](PipelineCompletion done) { return create_pipeline(config, std::move(done)); });
 }
 
 void initialize() {
@@ -757,6 +768,11 @@ bool begin_frame() {
     mapBuffer(g_textureUpload, TextureUploadSize);
   }
 
+#ifdef __EMSCRIPTEN__
+  g_frameSkippedDraw = false;
+  gx::g_gxState.asyncWorldDraws = false;
+  gx::g_gxState.stateDirty = true;
+#endif
   g_stats.drawCallCount = 0;
   g_stats.mergedDrawCallCount = 0;
   g_suspendedEfbPass.reset();
@@ -821,7 +837,9 @@ void end_frame(const wgpu::CommandEncoder& cmd) {
   for (auto& array : gx::g_gxState.arrays) {
     array.cachedRange = {};
   }
+#ifndef __EMSCRIPTEN__
   end_pipeline_frame();
+#endif
   ++g_frameIndex;
 }
 
@@ -841,6 +859,64 @@ static void expire_cached_bind_groups() {
   }
 }
 
+static bool pass_is_replayed(size_t index) {
+  return index + 1 == g_renderPasses.size() || bool(g_renderPasses[index].resolveTarget);
+}
+
+#ifdef __EMSCRIPTEN__
+void prepare_pipeline_dependencies() {
+  using Dependencies = PipelineDependencies<PipelineRef>;
+  std::vector<Dependencies::Pass> passes;
+  std::vector<size_t> indices;
+  passes.reserve(g_renderPasses.size());
+  indices.reserve(g_renderPasses.size());
+  const bool depthRequested = depth_peek::snapshot_requested();
+  for (size_t i = 0; i < g_renderPasses.size(); ++i) {
+    auto& recorded = g_renderPasses[i];
+    recorded.requiresComplete = true;
+    if (!pass_is_replayed(i)) continue;
+    const bool final = i + 1 == g_renderPasses.size();
+    Dependencies::Pass pass{
+        .color = reinterpret_cast<uintptr_t>(recorded.colorView.Get()),
+        .depth = reinterpret_cast<uintptr_t>(recorded.depthView.Get()),
+        .clearColor = recorded.clearColor,
+        .clearDepth = recorded.clearDepth,
+        // EFB attachments start cleared each frame. Only the final, uncopied
+        // presentation pass may be disposable; every texture producer is kept.
+        .presentationOnly = final && recorded.colorView.Get() == webgpu::g_frameBuffer.view.Get() &&
+                            recorded.depthView.Get() == webgpu::g_depthBuffer.view.Get(),
+        .persistentCopy = bool(recorded.resolveTarget),
+        .offscreen = recorded.offscreen,
+        .readback = final && depthRequested,
+    };
+    pass.draws.reserve(recorded.commands.size());
+    for (const auto& command : recorded.commands) {
+      switch (command.type) {
+      case CommandType::Draw:
+        switch (command.data.draw.type) {
+        case ShaderType::Clear: pass.draws.push_back({command.data.draw.clear.pipeline, true}); break;
+        case ShaderType::GX:
+          pass.draws.push_back({command.data.draw.gx.pipeline, !command.data.draw.gx.asyncEligible});
+          break;
+        default: pass.unknown = true; break;
+        }
+        break;
+      case CommandType::SetViewport:
+      case CommandType::SetScissor:
+      case CommandType::DebugMarker: break;
+      default: pass.unknown = true; break;
+      }
+    }
+    passes.push_back(std::move(pass));
+    indices.push_back(i);
+  }
+  const auto plan = Dependencies::analyze(passes);
+  for (size_t i = 0; i < indices.size(); ++i)
+    g_renderPasses[indices[i]].requiresComplete = plan.protectedPasses[i];
+  protect_pipeline_outputs(plan);
+}
+#endif
+
 void render(wgpu::CommandEncoder& cmd) {
   ZoneScoped;
   for (u32 i = 0; i < g_renderPasses.size(); ++i) {
@@ -850,7 +926,7 @@ void render(wgpu::CommandEncoder& cmd) {
     }
     if (i == g_renderPasses.size() - 1) {
       ASSERT(!passInfo.resolveTarget, "Final render pass must not have resolve target");
-    } else if (!passInfo.resolveTarget) {
+    } else if (!pass_is_replayed(i)) {
       // Skip intermediate render passes without resolve target
       continue;
     }
@@ -889,10 +965,20 @@ void render(wgpu::CommandEncoder& cmd) {
     pass.End();
 
     if (i == g_renderPasses.size() - 1) {
+#ifdef __EMSCRIPTEN__
+      // A late depth request can use a complete pass, or remain pending for a
+      // protected next frame. Never publish depth from a pass with skipped draws.
+      depth_peek::encode_frame_snapshot(cmd, passInfo.copySourceDepthView, passInfo.targetSize,
+                                        passInfo.msaaSamples, g_currentPassComplete);
+#else
       depth_peek::encode_frame_snapshot(cmd, passInfo.copySourceDepthView, passInfo.targetSize, passInfo.msaaSamples);
+#endif
     }
 
     if (passInfo.resolveTarget) {
+#ifdef __EMSCRIPTEN__
+      ASSERT(g_currentPassComplete, "Refusing to publish an incomplete EFB texture copy");
+#endif
       const auto& dstSize = passInfo.resolveTarget->size;
       const bool needsConversion = tex_copy_conv::needs_conversion(passInfo.resolveFormat);
       const bool needsScaling = dstSize.width != static_cast<uint32_t>(passInfo.resolveRect.width) ||
@@ -954,6 +1040,9 @@ void after_submit() noexcept { depth_peek::after_submit(); }
 
 void render_pass(const wgpu::RenderPassEncoder& pass, u32 idx) {
   g_currentPipeline = UINTPTR_MAX;
+#ifdef __EMSCRIPTEN__
+  g_currentPassComplete = true;
+#endif
 #ifdef AURORA_GFX_DEBUG_GROUPS
   std::vector<std::string> lastDebugGroupStack;
 #endif
@@ -999,6 +1088,10 @@ void render_pass(const wgpu::RenderPassEncoder& pass, u32 idx) {
     } break;
     case CommandType::Draw: {
       const auto& draw = cmd.data.draw;
+#ifdef __EMSCRIPTEN__
+      g_currentDrawRequired = !g_stats.asyncShaderCompilation || g_renderPasses[idx].requiresComplete ||
+                              draw.type != ShaderType::GX || !draw.gx.asyncEligible;
+#endif
       switch (draw.type) {
       case ShaderType::Clear:
         clear::render(draw.clear, pass, g_renderPasses[idx].targetSize);
@@ -1029,6 +1122,15 @@ bool bind_pipeline(PipelineRef ref, const wgpu::RenderPassEncoder& pass) {
   }
   wgpu::RenderPipeline pipeline;
   if (!get_pipeline(ref, pipeline)) {
+#ifdef __EMSCRIPTEN__
+    g_currentPassComplete = false;
+    ASSERT(!g_currentDrawRequired, "Protected pipeline {} was unavailable during replay", ref);
+    ++g_stats.skippedPipelineDraws;
+    if (!g_frameSkippedDraw) {
+      ++g_stats.skippedPipelineFrames;
+      g_frameSkippedDraw = true;
+    }
+#endif
     return false;
   }
   pass.SetPipeline(pipeline);
@@ -1169,3 +1271,10 @@ void pop_debug_group() {
 }
 
 const AuroraStats* aurora_get_stats() { return &aurora::gfx::g_stats; }
+void aurora_set_async_shader_compilation(bool enabled) {
+#ifdef __EMSCRIPTEN__
+  aurora::gfx::set_async_shader_compilation(enabled);
+#else
+  (void)enabled;
+#endif
+}

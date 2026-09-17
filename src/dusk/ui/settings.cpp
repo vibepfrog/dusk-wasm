@@ -587,6 +587,15 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             }, mPrelaunch);
 
         leftPane.add_section("Rendering");
+#ifdef __EMSCRIPTEN__
+        config_bool_select(leftPane, rightPane, getSettings().game.enableAsyncShaderCompilation,
+            {
+                .key = "Asynchronous Shader Compilation",
+                .helpText = "Reduce some shader compilation pauses. New world objects may briefly disappear "
+                            "until their shaders are ready. Captures, menus and other protected drawing still wait. "
+                            "Turn off to wait for all shaders before drawing.",
+            });
+#endif
         config_bool_select(leftPane, rightPane, getSettings().game.enableFrameInterpolation,
             {
                 .key = "Unlock Framerate",

@@ -24,7 +24,7 @@ test('settings survive a new session, preserving explicit opt-outs and numeric z
     assert.equal(first.store.initialize(), true);
     assert.equal(first.files.size, 0, 'fresh sessions must keep native defaults');
     const settings = { 'game.freeCamera': false, 'game.enableMouseCamera': false,
-        'game.internalResolutionScale': 0, 'game.gyroDeadband': 0, 'game.gyroSmoothing': 0,
+        'game.enableAsyncShaderCompilation': false, 'game.internalResolutionScale': 0, 'game.gyroDeadband': 0, 'game.gyroSmoothing': 0,
         'game.gyroMode': 1, 'game.enableTurboKeybind': true, 'audio.masterVolume': 42 };
     assert.equal(first.store.save(JSON.stringify(settings)), true);
     const next = fixture(first.records);

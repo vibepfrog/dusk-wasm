@@ -17,7 +17,15 @@
             maxMs: sorted[sorted.length - 1], over50Ms: frames.filter(x => x > 50).length,
         };
     }
-    globalThis.DuskShowcaseMetrics = { summarize };
+    function shaderSummary(data) {
+        const s = data.asyncShaders;
+        if (!s) return { completeRendering: null, text: 'Shader readiness unknown' };
+        const completeRendering = s.skippedDraws === 0 && s.failed === 0;
+        return { completeRendering, text: (s.enabled ? 'ON' : 'OFF') + ' · ' +
+            s.skippedDraws + ' draws skipped / ' + s.skippedFrames + ' frames · ' +
+            s.pendingEnd + ' pending' + (completeRendering ? '' : ' · incomplete rendering') };
+    }
+    globalThis.DuskShowcaseMetrics = { summarize, shaderSummary };
     if (typeof window === 'undefined') return;
     let Module, send, rows = [], reportURL, recipeURL, busy = true, completed = false;
     const node = id => document.getElementById(id);
@@ -44,7 +52,7 @@
     }
     function refreshReport() {
         const report = {
-            schema: 'dusk-showcase-benchmark-v1', route: 'entrance-orbit-v1',
+            schema: 'dusk-showcase-benchmark-v2', route: 'entrance-orbit-v1',
             completed,
             createdAt: new Date().toISOString(), userAgent: navigator.userAgent,
             canvas: { width: Module.canvas.width, height: Module.canvas.height },
@@ -53,7 +61,9 @@
             savedShaderPreparation: node('shader-warm').checked,
             note: 'Rendered-frame submission intervals, including pacing; not GPU execution timings. ' +
                 'First pass may already use cached shaders. Entry/load builds are separate from sweep builds. ' +
-                'Texture uploads and other work can also cause spikes. Dynamic actors continue to simulate.',
+                'Texture uploads and other work can also cause spikes. Dynamic actors continue to simulate. ' +
+                'Results with skipped draws include incomplete rendering; do not compare them as equal visual work. ' +
+                'Async mode still waits for protected outputs. Pending shaders are not counted as compiled.',
             results: rows,
         };
         reportURL = download(node('showcase-report'), JSON.stringify(report, null, 2),
@@ -113,11 +123,13 @@
         },
         result(data) {
             const metrics = summarize(data.frames);
-            rows.push({ ...data, sceneName: scenes[data.scene], metrics });
+            const shaders = shaderSummary(data);
+            rows.push({ ...data, sceneName: scenes[data.scene], metrics,
+                completeRendering: shaders.completeRendering });
             const row = document.createElement('tr');
             for (const value of [scenes[data.scene], data.pass ? 'Repeat' : 'First',
                 metrics.fps.toFixed(1), metrics.low1Percent.toFixed(1),
-                data.entryCompiled + ' + ' + data.compiled, metrics.over50Ms]) {
+                data.entryCompiled + ' + ' + data.compiled, metrics.over50Ms, shaders.text]) {
                 const cell = document.createElement('td'); cell.textContent = String(value); row.append(cell);
             }
             node('showcase-results').append(row);
@@ -127,7 +139,7 @@
         complete() {
             completed = true;
             node('showcase-progress').hidden = true;
-            node('showcase-run-note').textContent = 'Each first pass is followed by the same prepared sweep. ' +
+            node('showcase-run-note').textContent = 'Each first pass is followed by the same sweep. Check skipped draws before comparing FPS. ' +
                 'These locations sample performance; they do not cover every game shader.';
             if (rows.length) refreshReport();
         },
