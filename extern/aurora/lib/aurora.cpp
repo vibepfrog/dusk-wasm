@@ -427,6 +427,7 @@ void end_frame() noexcept {
 #ifdef __EMSCRIPTEN__
   // All pipelines remain mandatory in milestone 1, including one-time EFB
   // producers. Complete them before encoding and before acquiring the surface.
+  gfx::prepare_pipeline_dependencies();
   gfx::end_pipeline_frame();
 #endif
   const auto encoderDescriptor = wgpu::CommandEncoderDescriptor{

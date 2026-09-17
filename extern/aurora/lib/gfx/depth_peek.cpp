@@ -321,6 +321,11 @@ void request_snapshot() noexcept {
   g_snapshotRequested = true;
 }
 
+bool snapshot_requested() noexcept {
+  std::lock_guard lock{g_mutex};
+  return g_snapshotRequested;
+}
+
 bool read_latest(uint16_t x, uint16_t y, uint32_t& z) noexcept {
   std::lock_guard lock{g_mutex};
   if (x >= g_latest.width || y >= g_latest.height || g_latest.data.empty()) {
@@ -337,8 +342,11 @@ void poll() noexcept {
 }
 
 void encode_frame_snapshot(const wgpu::CommandEncoder& cmd, const wgpu::TextureView& depthView,
-                           wgpu::Extent3D sourceSize, uint32_t msaaSamples) noexcept {
+                           wgpu::Extent3D sourceSize, uint32_t msaaSamples, bool producerComplete) noexcept {
   ZoneScoped;
+  // A request arriving after preflight must not consume incomplete pixels.
+  // Leave it pending so the next frame protects its producers before replay.
+  if (!producerComplete) return;
   const auto now = Clock::now();
   {
     std::lock_guard lock{g_mutex};

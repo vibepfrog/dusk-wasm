@@ -34,6 +34,7 @@ public:
     Factory create;
     Pipeline pipeline{};
     std::string error;
+    bool required = false;
   };
   using JobPtr = std::shared_ptr<Job>;
   struct Request {
@@ -50,20 +51,35 @@ private:
     size_t compiling = 0;
     unsigned priorityStreak = 0;
     std::unordered_map<Key, JobPtr> jobs;
-    std::deque<JobPtr> priority, background, completed;
+    std::deque<JobPtr> required, priority, background, completed;
     explicit State(uint64_t value) : epoch(value) {}
   };
   std::shared_ptr<State> m_state = std::make_shared<State>(1);
   size_t m_maxInFlight;
 
-  static void discard_stale(std::deque<JobPtr>& queue, bool priority) {
+  static void discard_stale(std::deque<JobPtr>& queue, bool priority, bool required = false) {
     while (!queue.empty() &&
-           (queue.front()->status != Status::Queued || queue.front()->priority != priority)) {
+           (queue.front()->status != Status::Queued || queue.front()->required != required ||
+            (!required && queue.front()->priority != priority))) {
       queue.pop_front();
     }
   }
 
 public:
+  // Preflight may discover a persistent consumer after its producer was queued.
+  // Promote the existing job; never create a second compilation for its key.
+  bool require(const Key& key) {
+    auto& state = *m_state;
+    const auto it = state.jobs.find(key);
+    if (it == state.jobs.end()) return false;
+    auto& job = it->second;
+    if (!job->required && job->status == Status::Queued) {
+      job->required = true;
+      state.required.push_back(job);
+    }
+    return true;
+  }
+
   explicit AsyncPipelineQueue(size_t maxInFlight = 2) : m_maxInFlight(maxInFlight) {
     assert(maxInFlight > 0);
   }
@@ -99,17 +115,19 @@ public:
     const auto state = m_state;
     size_t submitted = 0;
     while (state->active && state->compiling < m_maxInFlight && submitted < maxSubmissions) {
+      discard_stale(state->required, false, true);
       discard_stale(state->priority, true);
       discard_stale(state->background, false);
-      if (state->priority.empty() && state->background.empty()) break;
+      if (state->required.empty() && state->priority.empty() && state->background.empty()) break;
       // Bounded priority preference prevents a continuous stream of visible
       // misses from starving an older background request.
       const bool priority = !state->priority.empty() &&
                             (state->background.empty() || state->priorityStreak < 8);
-      auto& queue = priority ? state->priority : state->background;
+      const bool required = !state->required.empty();
+      auto& queue = required ? state->required : priority ? state->priority : state->background;
       auto job = std::move(queue.front());
       queue.pop_front();
-      state->priorityStreak = priority ? state->priorityStreak + 1 : 0;
+      if (!required) state->priorityStreak = priority ? state->priorityStreak + 1 : 0;
       job->status = Status::Compiling;
       --state->queued;
       ++state->compiling;
@@ -167,6 +185,7 @@ public:
       job->pipeline = {};
     }
     state.jobs.clear();
+    state.required.clear();
     state.priority.clear();
     state.background.clear();
     state.completed.clear();

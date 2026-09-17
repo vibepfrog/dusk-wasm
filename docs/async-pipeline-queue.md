@@ -1,8 +1,10 @@
-# Asynchronous pipelines: milestone 1
+# Asynchronous pipelines: queue and output protection
 
-Status: implementation, native sanitizer regressions and pinned WebGPU bridge
-test pass locally; full WASM integration build pending. Development branch `async-pipeline-queue`.
-This stage preserves complete rendering. It does not enable draw skipping or add
+Milestone 1 passed the full WASM build and all 64 tests in
+[CI run 35201713703](https://github.com/vibepfrog/dusk-wasm/actions/runs/35201713703).
+Milestone 2 adds output protection; its 66 local tests pass and integration CI is pending.
+Development branch: `async-pipeline-queue`, draft PR #2.
+Both stages preserve complete rendering. This does not enable draw skipping or add
 the public asynchronous-compilation setting.
 
 ## Why this stage exists
@@ -103,10 +105,64 @@ upgrade; rerun the bridge fixture.
 
 ## Resume checklist
 
-1. Finish the real bridge fixture and full PR build; record commit, PR and run IDs.
-2. Keep this milestone isolated until reviewed/tested with an actual game session.
-3. Next milestone: dependency protection for persistent/offscreen results and
-   one-time captures. Only then implement selective skipping and the default-ON
-   persisted setting. A completed shader alone cannot repair a skipped old capture.
+1. Finish milestone 2 integration CI and record the result in the PR/recovery notes.
+2. Keep the feature isolated until reviewed/tested with an actual game session.
+3. Next milestone: selectively allow disposable draws to skip and add the default-ON
+   persisted setting. A completed shader cannot repair a skipped old capture.
 4. Preserve the deployed Faron fix (`14fd31c47667e08f239e72c6320a60fcdcd28d06`), input
    defaults, save isolation and existing tab-resume handling. No Cloudflare work.
+
+## Milestone 2: persistent output protection
+
+`pipeline_dependencies.hpp` analyzes the recorded passes in replay order. It tracks
+the most recent writer of each retained color/depth attachment identity. Load
+operations depend on those writers; full attachment clears break the dependency.
+A reverse walk protects the complete transitive producer chain for any copy,
+offscreen output, depth snapshot or unclassified destination. Missing attachment
+identity, a load with no known current-frame writer, or unknown command types force
+complete-frame readiness. Clear draws are individually mandatory. Shader keys
+shared by protected and eligible draws are required once, without duplicate jobs.
+
+`common.cpp::prepare_pipeline_dependencies` runs after FIFO drain and before the
+existing readiness barrier, encoder creation and surface acquisition. It uses the
+same pass-selection rule as replay. All `GXCopyTex` outputs remain protected,
+including format conversion, scaling, color and depth copies. All executed
+offscreen/nonfinal passes are protected. Consequently sampled copied textures,
+including ones reused through `copyTextureCache` or palette conversions, cannot
+originate from an intentionally skipped producer. Conversion/copy/presentation and
+UI infrastructure pipelines continue their existing synchronous/ready path.
+
+Only the final uncopied EFB presentation pass is a candidate for disposable work,
+and it becomes protected when a depth snapshot is already requested. EFB contents
+are cleared at the start of each recorded frame. This proof does not extend to a
+future renderer that deliberately loads previous-frame attachments: such a change
+must track cross-frame completeness rather than assume the fallback can repair old
+pixels. Existing full-frame readiness remains active throughout this milestone.
+
+`protect_pipeline_outputs` promotes existing required jobs ahead of ordinary and
+background work, preserving the two-in-flight limit, and cooperatively waits for
+their actual cache publication. It never waits under a GPU pass, surface lock or
+cache mutex. Original jobs still complete without another draw request.
+
+Replay records whether any pipeline was unavailable. A required miss is an explicit
+error, and an incomplete EFB copy cannot be published. A depth request arriving
+after preflight may use a complete final pass; otherwise `encode_frame_snapshot`
+leaves the request pending so the next frame protects its producers. Native callers
+keep the old default behavior. No capture command or buffer is retained for replay
+on a later frame, avoiding stale scene/resource writes.
+
+`[PipelineProtection]` reports protected/eligible draw counts, unique misses in each
+category, conservative fallback frames and dependency-wait time. Eligibility is
+potential eligibility, not evidence that any draw was skipped or an FPS gain.
+Twilight Princess makes frequent EFB copies: real-game measurements may show that
+most expensive misses remain protected. GX HUD/text/fade quality still needs a
+targeted audit before enabling the later skip policy; native ImGui settings and
+copy/clear infrastructure are outside that policy.
+
+Tests in `pipeline_dependencies_test.cpp` exercise the actual classifier and queue:
+retroactive consumer discovery, color/depth load ancestry, clear boundaries,
+offscreen/unknown outputs, shared keys, empty/new frames, promotion, limits and
+one-time completion after 200 service calls. `web/pipeline_dependencies.test.mjs`
+also compiles the actual request-consumption prefix of `encode_frame_snapshot`
+with a controlled clock to verify late requests survive an incomplete producer
+and throttling. This checks the production gate, not a physical GPU capture.

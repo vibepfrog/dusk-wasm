@@ -10,11 +10,12 @@ void initialize();
 void shutdown();
 
 void request_snapshot() noexcept;
+bool snapshot_requested() noexcept;
 bool read_latest(uint16_t x, uint16_t y, uint32_t& z) noexcept;
 void poll() noexcept;
 
 void encode_frame_snapshot(const wgpu::CommandEncoder& cmd, const wgpu::TextureView& depthView,
-                           wgpu::Extent3D sourceSize, uint32_t msaaSamples) noexcept;
+                           wgpu::Extent3D sourceSize, uint32_t msaaSamples, bool producerComplete = true) noexcept;
 void after_submit() noexcept;
 
 namespace testing {

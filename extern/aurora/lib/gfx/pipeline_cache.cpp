@@ -74,6 +74,9 @@ double longest_compile_ms = 0.0;
 uint64_t submitted_pipelines = 0;
 uint64_t failed_pipelines = 0;
 double protected_wait_ms = 0.0;
+uint64_t protected_draws = 0, eligible_draws = 0;
+uint64_t protected_misses = 0, eligible_misses = 0, conservative_frames = 0;
+double dependency_wait_ms = 0.0;
 }
 #endif
 
@@ -751,6 +754,41 @@ static void finish_pipeline_compilation() {
   } while (true);
   if (waited) diag::protected_wait_ms += emscripten_get_now() - start;
 }
+
+void protect_pipeline_outputs(const PipelineDependencies<PipelineRef>::Plan& plan) {
+  require_pipeline_success();
+  auto ready = [](PipelineRef ref) {
+    std::lock_guard lock{g_pipelineMutex};
+    const auto it = g_pipelines.find(ref);
+    return it != g_pipelines.end() && bool(it->second.pipeline);
+  };
+  diag::protected_draws += plan.protectedDraws;
+  diag::eligible_draws += plan.eligibleDraws;
+  diag::conservative_frames += plan.forceCompleteFrame;
+  for (auto ref : plan.eligible) diag::eligible_misses += !ready(ref);
+  size_t missing = 0;
+  for (auto ref : plan.required) {
+    if (ready(ref)) continue;
+    ++missing;
+    ASSERT(g_webPipelineQueue.require(ref), "Protected pipeline {} has no queued job", ref);
+  }
+  diag::protected_misses += missing;
+  const double start = emscripten_get_now();
+  if (plan.forceCompleteFrame) {
+    finish_pipeline_compilation();
+  } else if (missing) {
+    // Retain current-frame commands/buffers, yield only the owning worker, and
+    // wait before encoding any copy/readback. Never hold a surface or mutex.
+    do {
+      service_pipeline_compilation(2);
+      require_pipeline_success();
+      if (std::all_of(plan.required.begin(), plan.required.end(), ready)) break;
+      ASSERT(g_webPipelineQueue.pending(), "Protected pipeline disappeared before completion");
+      emscripten_sleep(0);
+    } while (true);
+  }
+  if (missing || plan.forceCompleteFrame) diag::dependency_wait_ms += emscripten_get_now() - start;
+}
 #endif
 
 void initialize_pipeline_cache() {
@@ -779,6 +817,9 @@ void initialize_pipeline_cache() {
   diag::submitted_pipelines = diag::failed_pipelines = 0;
   diag::frames_since_summary = 0;
   diag::compile_ms = diag::longest_compile_ms = diag::protected_wait_ms = 0;
+  diag::protected_draws = diag::eligible_draws = 0;
+  diag::protected_misses = diag::eligible_misses = diag::conservative_frames = 0;
+  diag::dependency_wait_ms = 0;
 #endif
   load_pipeline_cache();
 #ifdef __EMSCRIPTEN__
@@ -877,6 +918,10 @@ void end_pipeline_frame() {
                diag::bind_failures_this_frame, diag::total_pipelines_created,
                diag::total_bind_failures, pending_after, g_webPipelineQueue.in_flight(),
                diag::compile_ms, diag::longest_compile_ms, diag::protected_wait_ms);
+      Log.info("[PipelineProtection] draws: protected={} eligible={} | misses: protected={} eligible={}"
+               " | conservative_frames={} dependency_wait_ms={:.1f}",
+               diag::protected_draws, diag::eligible_draws, diag::protected_misses,
+               diag::eligible_misses, diag::conservative_frames, diag::dependency_wait_ms);
     }
     diag::pipelines_created_this_frame = 0;
     diag::bind_failures_this_frame = 0;
@@ -884,6 +929,9 @@ void end_pipeline_frame() {
     diag::longest_compile_ms = 0.0;
     diag::submitted_pipelines = diag::failed_pipelines = 0;
     diag::protected_wait_ms = 0.0;
+    diag::protected_draws = diag::eligible_draws = 0;
+    diag::protected_misses = diag::eligible_misses = diag::conservative_frames = 0;
+    diag::dependency_wait_ms = 0;
   }
 #endif
 }

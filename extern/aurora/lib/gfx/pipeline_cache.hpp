@@ -3,6 +3,9 @@
 #include "common.hpp"
 
 #include <functional>
+#ifdef __EMSCRIPTEN__
+#include "pipeline_dependencies.hpp"
+#endif
 
 namespace aurora::gfx::clear {
 struct PipelineConfig;
@@ -27,6 +30,7 @@ wgpu::RenderPipeline create_render_pipeline(const wgpu::RenderPipelineDescriptor
 #ifdef __EMSCRIPTEN__
 void service_pipeline_compilation(size_t maxSubmissions = 1);
 void cancel_pipeline_compilation(std::string reason);
+void protect_pipeline_outputs(const PipelineDependencies<PipelineRef>::Plan& plan);
 #endif
 
 template <typename Config>
