@@ -213,6 +213,7 @@ bool launchUILoop() {
 
 #ifdef __EMSCRIPTEN__
         aurora_set_async_shader_compilation(dusk::getSettings().game.enableAsyncShaderCompilation);
+        aurora_set_aggressive_async_shader_compilation(dusk::getSettings().game.enableAggressiveAsyncShaderCompilation);
 #endif
         if (!aurora_begin_frame()) {
             DuskLog.debug("aurora_begin_frame returned false, skipping draw this frame");
@@ -337,6 +338,7 @@ void main01(void) {
 #endif
 #ifdef __EMSCRIPTEN__
         aurora_set_async_shader_compilation(dusk::getSettings().game.enableAsyncShaderCompilation);
+        aurora_set_aggressive_async_shader_compilation(dusk::getSettings().game.enableAggressiveAsyncShaderCompilation);
 #endif
         if (!aurora_begin_frame()) {
 #if defined(__EMSCRIPTEN__) && DUSK_TRACE_ENABLE

@@ -237,3 +237,44 @@ scope ordering, dirty-state merge boundaries, perspective UI, fades, orthographi
 work and truncated payloads. Existing dependency/late-readback tests remain active.
 These controlled fixtures are not a substitute for actual GPU shader validation
 or visual gameplay QA. Full WASM CI additionally exercises the pinned WebGPU bridge.
+
+
+## Aggressive async experiment (18 September 2026)
+
+Browser-only **Video > Rendering > Aggressive Async Shaders (not advised)** is a
+separate persisted setting, `game.enableAggressiveAsyncShaderCompilation`, default
+**OFF**. When enabled it overrides the ordinary async setting, so it also works
+with the ordinary toggle OFF. Turning the aggressive toggle OFF restores the
+ordinary toggle's selected policy on the next frame. Turn both OFF to drain all
+pending jobs before rendering.
+
+This opt-in deliberately bypasses all game-pipeline dependency waits, including
+unknown-output fallback, UI/HUD/fades, shader-based clears, shadows, offscreen
+render targets, persistent texture copies and depth readbacks. Pending draws are
+skipped (invisible); no dummy shader is compiled or passed through an incompatible
+layout. EFB copies and depth captures are allowed to publish incomplete results.
+This is intentionally unsuitable for normal play: a single-use capture can remain
+wrong after compilation finishes, and disabling the toggle does not repair it.
+Reload to rebuild transient renderer outputs.
+
+The owned async queue, bounded submissions, callback publication without another
+request, device-loss cancellation and visible compile failures are unchanged.
+Ready shaders bind on later draws. Actual shader failures are not silently ignored.
+All game-generated GX and clear shader misses use this policy. Fixed presentation,
+texture-conversion, depth-compute and Dusk settings UI pipelines are already built
+at renderer initialization; the experiment does not move that startup work. The
+optional saved-recipe startup warmup remains available. WGSL generation, driver
+submission, uploads and game/resource work can still cause stutter; this mode does
+not promise a zero-stutter frame.
+
+Benchmark results record the aggressive mode, invalidate a running comparison on
+mode changes, and label capture correctness unverified. A sticky renderer flag
+records any aggressive skip, so returning to normal mode cannot falsely certify
+that earlier captures were intact. No cache format or game save format changes.
+
+Validation: the production-code runtime fixture covers the default, frame latching,
+aggressive override of normal OFF, zero waits even for an unknown persistent
+producer, skipped protected draws, one-time requests completing without reuse,
+restored protection using existing jobs, and sticky benchmark uncertainty. Existing
+normal-mode dependency and late-depth gates remain covered. These are CPU fixtures
+with sanitizers; they do not substitute for game-disc/GPU visual testing.

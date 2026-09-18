@@ -593,7 +593,14 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 .key = "Asynchronous Shader Compilation",
                 .helpText = "Reduce some shader compilation pauses. New world objects may briefly disappear "
                             "until their shaders are ready. Captures, menus and other protected drawing still wait. "
-                            "Turn off to wait for all shaders before drawing.",
+                            "Turn off both async options to wait for all shaders before drawing.",
+            });
+        config_bool_select(leftPane, rightPane, getSettings().game.enableAggressiveAsyncShaderCompilation,
+            {
+                .key = "Aggressive Async Shaders (not advised)",
+                .helpText = "Experimental. Overrides the normal async setting and never waits for missing game shaders. "
+                            "Unready draws are invisible, including menus, fades and texture captures. "
+                            "Textures or effects may stay broken until you reload. Not advised for normal play.",
             });
 #endif
         config_bool_select(leftPane, rightPane, getSettings().game.enableFrameInterpolation,

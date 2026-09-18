@@ -50,7 +50,7 @@ uint32_t initialPipelines = 0, passPipelines = 0;
 AuroraStats initialShaderStats{}, passShaderStats{};
 cXyz anchor;
 std::vector<double> samples;
-using PresentationKey = std::array<int, 10>;
+using PresentationKey = std::array<int, 11>;
 PresentationKey measuredPresentation{};
 
 PresentationKey presentation_key() {
@@ -62,7 +62,8 @@ PresentationKey presentation_key() {
             static_cast<int>(settings.game.bloomMode.getValue()),
             settings.game.enableFrameInterpolation.getValue(), settings.video.enableVsync.getValue(),
             settings.game.enableMirrorMode.getValue(), getTransientSettings().skipFrameRateLimit,
-            settings.game.enableAsyncShaderCompilation.getValue()};
+            settings.game.enableAsyncShaderCompilation.getValue(),
+            settings.game.enableAggressiveAsyncShaderCompilation.getValue()};
 }
 
 void status(const char* text) {
@@ -98,7 +99,8 @@ void result() {
             asyncShaders: { enabled: !!$14, submitted: $15, failed: $16,
                 pendingStart: $17, pendingEnd: $18, inFlightEnd: $19,
                 skippedDraws: $20, skippedFrames: $21, protectedWaitMs: $22,
-                entrySkippedDraws: $23, entryProtectedWaitMs: $24 }
+                entrySkippedDraws: $23, entryProtectedWaitMs: $24, aggressive: !!$25,
+                unprotectedSkipsOccurred: !!$26 }
         });
     }, sceneIndex, pass, samples.data(), samples.size(), compiled,
        passPipelines - initialPipelines,
@@ -115,7 +117,8 @@ void result() {
        static_cast<double>(stats.skippedPipelineFrames - passShaderStats.skippedPipelineFrames),
        stats.pipelineWaitMs - passShaderStats.pipelineWaitMs,
        static_cast<double>(passShaderStats.skippedPipelineDraws - initialShaderStats.skippedPipelineDraws),
-       passShaderStats.pipelineWaitMs - initialShaderStats.pipelineWaitMs);
+       passShaderStats.pipelineWaitMs - initialShaderStats.pipelineWaitMs,
+       stats.aggressiveAsyncShaderCompilation, stats.unprotectedPipelineSkips);
 }
 
 bool scene_ready() {

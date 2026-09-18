@@ -35,6 +35,8 @@ typedef struct {
   uint64_t skippedPipelineFrames;
   double pipelineWaitMs;
   bool asyncShaderCompilation;
+  bool aggressiveAsyncShaderCompilation;
+  bool unprotectedPipelineSkips; // Sticky: earlier aggressive skips may live in captures.
 } AuroraStats;
 
 const AuroraStats* aurora_get_stats();
@@ -43,6 +45,9 @@ void aurora_enable_vsync(bool enabled);
 // Owning application thread only. Browser mode is latched at the next frame;
 // switching off retains existing compilation jobs and waits for their results.
 void aurora_set_async_shader_compilation(bool enabled);
+// Experimental browser override: all pending game draws may be skipped, even
+// persistent outputs. Defaults off; disabling does not repair earlier captures.
+void aurora_set_aggressive_async_shader_compilation(bool enabled);
 
 #ifdef __cplusplus
 }

@@ -120,6 +120,14 @@ static PipelineRef g_currentPipeline;
 static bool g_currentDrawRequired = true;
 static bool g_frameSkippedDraw = false;
 static bool g_currentPassComplete = true;
+
+static bool pipeline_draw_required(bool protectedDraw) {
+  return !g_stats.asyncShaderCompilation || (!g_stats.aggressiveAsyncShaderCompilation && protectedDraw);
+}
+
+static bool pipeline_output_publishable(bool complete) {
+  return complete || g_stats.aggressiveAsyncShaderCompilation;
+}
 #endif
 wgpu::BindGroupLayout g_staticBindGroupLayout;
 wgpu::BindGroup g_staticBindGroup;
@@ -865,6 +873,8 @@ static bool pass_is_replayed(size_t index) {
 
 #ifdef __EMSCRIPTEN__
 void prepare_pipeline_dependencies() {
+  // This mode deliberately ignores every output dependency, not just world draws.
+  if (g_stats.aggressiveAsyncShaderCompilation) return;
   using Dependencies = PipelineDependencies<PipelineRef>;
   std::vector<Dependencies::Pass> passes;
   std::vector<size_t> indices;
@@ -966,10 +976,10 @@ void render(wgpu::CommandEncoder& cmd) {
 
     if (i == g_renderPasses.size() - 1) {
 #ifdef __EMSCRIPTEN__
-      // A late depth request can use a complete pass, or remain pending for a
-      // protected next frame. Never publish depth from a pass with skipped draws.
+      // Normal mode retains a late request for a complete next frame. The
+      // aggressive experiment intentionally also publishes incomplete depth.
       depth_peek::encode_frame_snapshot(cmd, passInfo.copySourceDepthView, passInfo.targetSize,
-                                        passInfo.msaaSamples, g_currentPassComplete);
+                                        passInfo.msaaSamples, pipeline_output_publishable(g_currentPassComplete));
 #else
       depth_peek::encode_frame_snapshot(cmd, passInfo.copySourceDepthView, passInfo.targetSize, passInfo.msaaSamples);
 #endif
@@ -977,7 +987,7 @@ void render(wgpu::CommandEncoder& cmd) {
 
     if (passInfo.resolveTarget) {
 #ifdef __EMSCRIPTEN__
-      ASSERT(g_currentPassComplete, "Refusing to publish an incomplete EFB texture copy");
+      ASSERT(pipeline_output_publishable(g_currentPassComplete), "Refusing to publish an incomplete EFB texture copy");
 #endif
       const auto& dstSize = passInfo.resolveTarget->size;
       const bool needsConversion = tex_copy_conv::needs_conversion(passInfo.resolveFormat);
@@ -1089,8 +1099,8 @@ void render_pass(const wgpu::RenderPassEncoder& pass, u32 idx) {
     case CommandType::Draw: {
       const auto& draw = cmd.data.draw;
 #ifdef __EMSCRIPTEN__
-      g_currentDrawRequired = !g_stats.asyncShaderCompilation || g_renderPasses[idx].requiresComplete ||
-                              draw.type != ShaderType::GX || !draw.gx.asyncEligible;
+      g_currentDrawRequired = pipeline_draw_required(g_renderPasses[idx].requiresComplete ||
+                              draw.type != ShaderType::GX || !draw.gx.asyncEligible);
 #endif
       switch (draw.type) {
       case ShaderType::Clear:
@@ -1124,6 +1134,7 @@ bool bind_pipeline(PipelineRef ref, const wgpu::RenderPassEncoder& pass) {
   if (!get_pipeline(ref, pipeline)) {
 #ifdef __EMSCRIPTEN__
     g_currentPassComplete = false;
+    g_stats.unprotectedPipelineSkips |= g_stats.aggressiveAsyncShaderCompilation;
     ASSERT(!g_currentDrawRequired, "Protected pipeline {} was unavailable during replay", ref);
     ++g_stats.skippedPipelineDraws;
     if (!g_frameSkippedDraw) {
@@ -1274,6 +1285,14 @@ const AuroraStats* aurora_get_stats() { return &aurora::gfx::g_stats; }
 void aurora_set_async_shader_compilation(bool enabled) {
 #ifdef __EMSCRIPTEN__
   aurora::gfx::set_async_shader_compilation(enabled);
+#else
+  (void)enabled;
+#endif
+}
+
+void aurora_set_aggressive_async_shader_compilation(bool enabled) {
+#ifdef __EMSCRIPTEN__
+  aurora::gfx::set_aggressive_async_shader_compilation(enabled);
 #else
   (void)enabled;
 #endif
