@@ -74,3 +74,14 @@ test('benchmark flags incomplete rendering and does not equate pending jobs with
     assert.equal(shaderSummary(data).completeRendering, false);
     assert.equal(shaderSummary({}).completeRendering, null, 'old reports cannot imply verified completeness');
 });
+
+test('aggressive benchmark cannot certify captures, even after returning to normal mode', () => {
+    const { shaderSummary } = metricsContext.DuskShowcaseMetrics;
+    const asyncShaders = { enabled: true, aggressive: true, skippedDraws: 0,
+        skippedFrames: 0, failed: 0, pendingEnd: 0 };
+    assert.equal(shaderSummary({ asyncShaders }).completeRendering, null);
+    assert.match(shaderSummary({ asyncShaders }).text, /AGGRESSIVE \(not advised\).*capture correctness unverified/);
+    asyncShaders.aggressive = false;
+    asyncShaders.unprotectedSkipsOccurred = true;
+    assert.equal(shaderSummary({ asyncShaders }).completeRendering, null);
+});

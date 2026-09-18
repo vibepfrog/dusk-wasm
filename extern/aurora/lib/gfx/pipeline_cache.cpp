@@ -107,6 +107,7 @@ static WebPipelineQueue g_webPipelineQueue{2};
 static bool g_webPipelineCacheActive = false;
 static std::string g_webPipelineFailure;
 static bool g_asyncShaderCompilationRequested = true;
+static bool g_aggressiveAsyncShaderCompilationRequested = false;
 #endif
 
 static sqlite3* g_pipelineCacheDb = nullptr;
@@ -700,6 +701,10 @@ void set_async_shader_compilation(bool enabled) {
   g_asyncShaderCompilationRequested = enabled;
 }
 
+void set_aggressive_async_shader_compilation(bool enabled) {
+  g_aggressiveAsyncShaderCompilationRequested = enabled;
+}
+
 void service_pipeline_compilation(size_t maxSubmissions) {
   if (!g_webPipelineCacheActive) return;
   // Always pump, even with zero submission budget or no new cache lookups.
@@ -774,6 +779,9 @@ static void finish_pipeline_compilation() {
 
 void protect_pipeline_outputs(const PipelineDependencies<PipelineRef>::Plan& plan) {
   require_pipeline_success();
+  // Deliberate opt-in: no protected, readback or unknown-output wait, even when
+  // a one-time copy can permanently capture missing drawing. Jobs still retire.
+  if (g_stats.aggressiveAsyncShaderCompilation) return;
   auto ready = [](PipelineRef ref) {
     std::lock_guard lock{g_pipelineMutex};
     const auto it = g_pipelines.find(ref);
@@ -837,7 +845,9 @@ void initialize_pipeline_cache() {
   g_stats.submittedPipelines = g_stats.failedPipelines = g_stats.inFlightPipelines = 0;
   g_stats.skippedPipelineDraws = g_stats.skippedPipelineFrames = 0;
   g_stats.pipelineWaitMs = 0;
-  g_stats.asyncShaderCompilation = g_asyncShaderCompilationRequested;
+  g_stats.unprotectedPipelineSkips = false;
+  g_stats.aggressiveAsyncShaderCompilation = g_aggressiveAsyncShaderCompilationRequested;
+  g_stats.asyncShaderCompilation = g_asyncShaderCompilationRequested || g_stats.aggressiveAsyncShaderCompilation;
   diag::total_bind_failures = diag::total_pipelines_created = 0;
   diag::bind_failures_this_frame = diag::pipelines_created_this_frame = 0;
   diag::submitted_pipelines = diag::failed_pipelines = 0;
@@ -913,7 +923,8 @@ void shutdown_pipeline_cache() {
 
 void begin_pipeline_frame() {
 #ifdef __EMSCRIPTEN__
-  g_stats.asyncShaderCompilation = g_asyncShaderCompilationRequested;
+  g_stats.aggressiveAsyncShaderCompilation = g_aggressiveAsyncShaderCompilationRequested;
+  g_stats.asyncShaderCompilation = g_asyncShaderCompilationRequested || g_stats.aggressiveAsyncShaderCompilation;
 #endif
   g_pipelineFrameActive = true;
   if (!g_hasPipelineThread) {

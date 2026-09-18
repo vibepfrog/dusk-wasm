@@ -71,6 +71,7 @@ UserSettings g_userSettings = {
         .disableWaterRefraction {"game.disableWaterRefraction", false},
         .enableFrameInterpolation {"game.enableFrameInterpolation", false},
         .enableAsyncShaderCompilation {"game.enableAsyncShaderCompilation", kBrowserControls},
+        .enableAggressiveAsyncShaderCompilation {"game.enableAggressiveAsyncShaderCompilation", false},
         .internalResolutionScale {"game.internalResolutionScale", 0},
         .shadowResolutionMultiplier {"game.shadowResolutionMultiplier", 1},
         .enableDepthOfField {"game.enableDepthOfField", true},
@@ -224,6 +225,7 @@ void registerSettings() {
     Register(g_userSettings.game.alwaysGreatspin);
     Register(g_userSettings.game.enableFrameInterpolation);
     Register(g_userSettings.game.enableAsyncShaderCompilation);
+    Register(g_userSettings.game.enableAggressiveAsyncShaderCompilation);
     Register(g_userSettings.game.enableMouseCamera);
     Register(g_userSettings.game.mouseCameraSensitivity);
     Register(g_userSettings.game.invertMouseY);

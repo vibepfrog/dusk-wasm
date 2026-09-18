@@ -122,6 +122,7 @@ struct UserSettings {
         ConfigVar<bool> disableWaterRefraction;
         ConfigVar<bool> enableFrameInterpolation;
         ConfigVar<bool> enableAsyncShaderCompilation;
+        ConfigVar<bool> enableAggressiveAsyncShaderCompilation;
         ConfigVar<int> internalResolutionScale;
         ConfigVar<int> shadowResolutionMultiplier;
         ConfigVar<bool> enableDepthOfField;

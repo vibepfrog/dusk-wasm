@@ -44,6 +44,7 @@ using aurora::gfx::PipelineDependencies;
 WebPipelineQueue g_webPipelineQueue(2);
 bool g_webPipelineCacheActive = true, g_pipelineFrameActive = false, g_hasPipelineThread = false;
 bool g_asyncShaderCompilationRequested = true, g_currentDrawRequired = false;
+bool g_aggressiveAsyncShaderCompilationRequested = false;
 bool g_currentPassComplete = true, g_frameSkippedDraw = false;
 PipelineRef g_currentPipeline = 0;
 size_t g_pipelinesPerFrame = 0;
@@ -74,6 +75,9 @@ std::function<void()> onSleep;
 void emscripten_sleep(int) { now += 1; assert(onSleep); onSleep(); }
 static void require_pipeline_success();
 ${fn(cache, 'void set_async_shader_compilation(bool enabled) {')}
+${fn(cache, 'void set_aggressive_async_shader_compilation(bool enabled) {')}
+${fn(common, 'static bool pipeline_draw_required(')}
+${fn(common, 'static bool pipeline_output_publishable(')}
 ${fn(cache, 'void service_pipeline_compilation(size_t maxSubmissions) {')}
 ${fn(cache, 'void cancel_pipeline_compilation(std::string reason) {')}
 ${fn(cache, 'static void require_pipeline_success() {')}
@@ -97,7 +101,9 @@ int main() {
  };
  wgpu::RenderPassEncoder pass;
  begin_pipeline_frame();
- assert(g_stats.asyncShaderCompilation); // Default ON.
+ assert(g_stats.asyncShaderCompilation && !g_stats.aggressiveAsyncShaderCompilation); // Normal default ON, aggressive OFF.
+ assert(pipeline_draw_required(true) && !pipeline_draw_required(false));
+ assert(pipeline_output_publishable(true) && !pipeline_output_publishable(false));
  request(1); request(2); end_pipeline_frame();
  assert(submitted.size() == 1 && g_stats.inFlightPipelines == 1 && queuedPipelines == 2);
  assert(!bind_pipeline(1, pass) && !bind_pipeline(1, pass));
@@ -126,6 +132,53 @@ int main() {
  protect_pipeline_outputs(Dependencies::analyze({display}));
  assert(submitted[3] == 5 && g_pipelines.contains(5)); // Required UI runs first.
  assert(bind_pipeline(5, pass));
+
+ // Aggressive overrides normal OFF and bypasses even unknown-output/full-frame
+ // barriers. A one-time clear/UI/copy producer must not wait or disappear from
+ // the queue; completion must publish without another request.
+ set_async_shader_compilation(false);
+ set_aggressive_async_shader_compilation(true);
+ assert(!g_stats.aggressiveAsyncShaderCompilation); // No mid-frame policy change.
+ begin_pipeline_frame();
+ assert(g_stats.aggressiveAsyncShaderCompilation && g_stats.asyncShaderCompilation);
+ assert(!pipeline_draw_required(true) && !pipeline_draw_required(false));
+ assert(pipeline_output_publishable(false)); // Copies AND depth can publish missing drawing.
+ request(7); request(8);
+ Dependencies::Pass capture{.color=3,.depth=4,.persistentCopy=true,.unknown=true,.draws={{7,true},{8,true}}};
+ const auto unsafePlan = Dependencies::analyze({capture});
+ assert(unsafePlan.forceCompleteFrame);
+ const auto waitBefore = g_stats.pipelineWaitMs, timeBefore = now;
+ onSleep = [] { assert(false && "aggressive mode must never wait for a pipeline"); };
+ protect_pipeline_outputs(unsafePlan);
+ end_pipeline_frame();
+ assert(g_stats.pipelineWaitMs == waitBefore && now == timeBefore);
+ g_currentDrawRequired = pipeline_draw_required(true);
+ assert(!bind_pipeline(7, pass));
+ assert(g_stats.unprotectedPipelineSkips);
+ for (int i=0; i<10; ++i) {
+   while (!callbacks.empty()) complete(callbacks.begin()->first);
+   service_pipeline_compilation(2);
+ }
+ assert(g_pipelines.contains(7) && g_pipelines.contains(8));
+ assert(bind_pipeline(7, pass) && *pass.bound == 7);
+ assert(std::count(submitted.begin(), submitted.end(), 7) == 1);
+ assert(std::count(submitted.begin(), submitted.end(), 8) == 1);
+
+ // Switching back restores protection on the next frame and uses the existing
+ // pending job. It cannot repair a previously damaged persistent capture.
+ request(9);
+ set_aggressive_async_shader_compilation(false); set_async_shader_compilation(true);
+ assert(!pipeline_draw_required(true));
+ begin_pipeline_frame();
+ assert(!g_stats.aggressiveAsyncShaderCompilation && g_stats.asyncShaderCompilation);
+ assert(pipeline_draw_required(true) && !pipeline_output_publishable(false));
+ assert(g_stats.unprotectedPipelineSkips); // Benchmark cannot claim intact captures.
+ onSleep = [&] { while (!callbacks.empty()) complete(callbacks.begin()->first); };
+ Dependencies::Pass protectedAgain{.color=1,.depth=2,.presentationOnly=true,.draws={{9,true}}};
+ protect_pipeline_outputs(Dependencies::analyze({protectedAgain}));
+ assert(g_pipelines.contains(9) && std::count(submitted.begin(), submitted.end(), 9) == 1);
+ g_currentDrawRequired = true;
+ assert(bind_pipeline(9, pass));
  // Hidden frame finishes retirement but doesn't start another ordinary job.
  request(6); window::paused = true;
  const auto count = submitted.size(); end_pipeline_frame();

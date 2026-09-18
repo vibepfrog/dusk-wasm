@@ -20,10 +20,11 @@
     function shaderSummary(data) {
         const s = data.asyncShaders;
         if (!s) return { completeRendering: null, text: 'Shader readiness unknown' };
-        const completeRendering = s.skippedDraws === 0 && s.failed === 0;
-        return { completeRendering, text: (s.enabled ? 'ON' : 'OFF') + ' · ' +
+        // Earlier aggressive skips can survive in captures even on a warm pass.
+        const completeRendering = (s.aggressive || s.unprotectedSkipsOccurred) ? null : s.skippedDraws === 0 && s.failed === 0;
+        return { completeRendering, text: (s.aggressive ? 'AGGRESSIVE (not advised)' : s.enabled ? 'ON' : 'OFF') + ' · ' +
             s.skippedDraws + ' draws skipped / ' + s.skippedFrames + ' frames · ' +
-            s.pendingEnd + ' pending' + (completeRendering ? '' : ' · incomplete rendering') };
+            s.pendingEnd + ' pending' + (completeRendering === null ? ' · capture correctness unverified' : completeRendering ? '' : ' · incomplete rendering') };
     }
     globalThis.DuskShowcaseMetrics = { summarize, shaderSummary };
     if (typeof window === 'undefined') return;
@@ -63,7 +64,8 @@
                 'First pass may already use cached shaders. Entry/load builds are separate from sweep builds. ' +
                 'Texture uploads and other work can also cause spikes. Dynamic actors continue to simulate. ' +
                 'Results with skipped draws include incomplete rendering; do not compare them as equal visual work. ' +
-                'Async mode still waits for protected outputs. Pending shaders are not counted as compiled.',
+                'Normal async waits for protected outputs; aggressive async does not, and earlier damaged captures may persist. ' +
+                'Pending shaders are not counted as compiled.',
             results: rows,
         };
         reportURL = download(node('showcase-report'), JSON.stringify(report, null, 2),
