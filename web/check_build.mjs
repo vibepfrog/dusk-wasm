@@ -4,6 +4,7 @@ import { readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkShellRuntime } from './shell_runtime_check.mjs';
+import { inspectCloudflareBundle } from './cloudflare_bundle.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const buildDir = resolve(process.argv[2] || join(__dirname, '..', 'build', 'web-emscripten-fast', 'web'));
@@ -43,9 +44,15 @@ for (const name of expected) {
     }
     sizes[name] = size;
     ok(name.padEnd(15) + ' ' + bytes(size));
-    if (checkCloudflare && size > 25 * 1024 * 1024) {
-        fail(name + ' exceeds the Cloudflare Pages 25 MiB per-file limit');
-    }
+
+}
+
+if (checkCloudflare) {
+    try {
+        const files = inspectCloudflareBundle(buildDir);
+        ok('all ' + files.length + ' upload files fit Cloudflare Pages limits');
+        for (const file of files.slice(0, 3)) ok('largest: ' + file.path + ' ' + bytes(file.bytes));
+    } catch (error) { fail(error.message); }
 }
 
 if (sizes['index.wasm']) {

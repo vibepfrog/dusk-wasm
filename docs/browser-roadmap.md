@@ -69,6 +69,8 @@ Code evidence: `src/dusk/game_clock.cpp`, `src/m_Do/m_Do_main.cpp`, `libs/JSyste
 
 ## Cloudflare Pages preparation
 
+Detailed setup and cutover steps: [Cloudflare Pages migration preparation](cloudflare-pages-migration.md).
+
 The validated `build/web-emscripten-fast/web` directory is the deployment unit. Keep compilation in the existing pinned GitHub Actions toolchain; deploy its output to Pages rather than duplicating the full compiler setup in a Pages build command.
 
 `web/_headers` already supplies COOP `same-origin`, COEP `require-corp` and CORP `same-origin` for all static paths. The isolation service worker remains useful for GitHub Pages and should be unnecessary on a correctly configured Cloudflare origin. Confirm the response headers and `crossOriginIsolated` on the final site.
